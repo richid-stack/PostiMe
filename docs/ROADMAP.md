@@ -1,6 +1,6 @@
 # Roadmap
 
-What PostiMe still needs, by who is using it, checked against the code on 2 Nov 2026.
+What PostiMe still needs, by who is using it, checked against the code on 2 Nov 2026 (Phase 0 updated the same day after the export and green-screen work).
 
 ## How to read this
 
@@ -27,19 +27,23 @@ What PostiMe still needs, by who is using it, checked against the code on 2 Nov 
 
 ## Phase 0: make what exists honest
 
-These are defects in what the app already offers. Fix them before adding anything.
+These are defects in what the app already offered. Done items stay here so the history is visible.
 
 | Item | Status | What the code shows | Size |
 | --- | --- | --- | --- |
-| Timeline chroma key | **Broken** | The effect stores a colour and tolerance on the clip, but `PreviewPlayer.tsx` never draws it and HQ export rejects it. The only working keyer is on still images in Compositing. | M |
-| Export that keeps effects and audio | **Broken** | Quick Export records the preview canvas and, per a code comment, captures picture only. HQ FFmpeg export keeps audio but rejects clips with text, transitions, chroma key, blend modes, custom LUTs or opacity keyframes. No audio-only export. | L |
+| Timeline chroma key in the preview | **Built** (2 Nov 2026) | The effect used to store a colour and tolerance that nothing drew. It now keys on the GPU (WebGL, with a CPU fallback) using chroma only, so unevenly lit green still keys as one colour. Inspector has key colour, tolerance, edge softness and spill removal. Checked in a real browser. | done |
+| Chroma key in HQ export | **Built** | FFmpeg `chromakey` and `despill`, using the same parameter mapping as the preview. Checked on a real render: light and dark green are replaced, the subject stays. | done |
+| Audio in HQ FFmpeg export | **Built** | Earlier this document said HQ kept audio. That was wrong: it ignored every audio track, including the sound inside video clips. It now mixes audio-track clips and video-clip sound with trim, speed, volume and volume keyframes, placed on the timeline, limited and padded to the picture length. AAC, or uncompressed PCM for ProRes. Checked on a real render. | done |
+| Audio in Quick Export | **Built** | Quick Export recorded the picture only. The player now routes every clip's sound into the recording. Playback is silent while exporting. Checked in a real browser: placement and levels were right. | done |
+| HQ export still rejects some clips | **Partial** | Text overlays, transitions, blend modes, custom LUTs and opacity keyframes still stop an HQ export with a clear message. Each has an FFmpeg filter that can do it (`drawtext`, `xfade`, `blend`, `lut3d`), so this is build work, not a limit. Audio-only export is also unsupported. Quick Export handles all of these because it records the preview. | L |
 | Compositing palette promises | **Partial** | Tracker, stabilise, match-move, roto and others are in the node palette. The in-app render path I read handles key, grade and merge on stills. Label the rest "needs Natron or Nuke" or build them. | S |
 | Logo and plugin registry | **Partial** | The in-app logo is still upstream's, and the default plugin registry points at the upstream author's repository. Release blockers. | S |
 
-How to fix the first two:
-- FFmpeg already has `chromakey`, `despill`, `xfade`, `drawtext`, `blend` and `lut3d` filters, so HQ export parity is realistic. It is the larger job.
-- Preview keying is a WebGL shader on the existing canvas. Real-time at 1080p is realistic on an ordinary GPU.
-- Quick Export audio means mixing the timeline audio offline and muxing it, or retiring Quick Export once HQ has parity.
+Limits worth knowing:
+- Quick Export records in real time, so a 10 minute timeline takes 10 minutes. HQ export does not.
+- Quick Export audio needs media that the browser may read. Remote media served without CORS headers records as silence.
+- The preview key and the FFmpeg key use the same mapping but are not bit-identical, because FFmpeg works in limited-range YUV. Expect a close match, not identical edges.
+- A red key colour is keyed but not despilled in HQ export, because FFmpeg's `despill` only supports green and blue.
 
 ## Phase 1: the creator loop
 

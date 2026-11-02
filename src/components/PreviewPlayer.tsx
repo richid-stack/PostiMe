@@ -3,11 +3,20 @@ import { ClipEffectLayer, MediaItem, TimelineClip, TimelineTrack, EffectType, Ke
 import { PlayIcon } from './icons';
 import { buildFilterString, getBloomStrength, getGrainStrength, getHalationStrength, getVignetteStrength, normalizeFilters } from '../utils/colorGrading';
 import { applyCubeLutToImageData } from '../utils/lut';
+import { keyFrame } from '../utils/chromaKeyGL';
 import { buildStyleFilterForEffect, getClipEffectLayers, hasOverlayRenderer, mergeFilterChunk } from '../utils/effects';
 
 export interface PreviewPlayerHandle {
     getCanvas: () => HTMLCanvasElement | null;
     getAudioContext: () => AudioContext | null;
+    /**
+     * Start capturing the sound of every clip into a MediaStream that can be recorded next to the canvas.
+     * Playback is silenced while capturing so an export does not play through the speakers.
+     * Returns null when the browser cannot route media element audio.
+     */
+    startAudioCapture: () => Promise<MediaStream | null>;
+    /** Stop capturing and restore normal playback. */
+    stopAudioCapture: () => void;
 }
 
 interface PreviewPlayerProps {
@@ -350,10 +359,50 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
         }
     }, [isPlaying]);
 
+    // Audio routing for export. A media element can feed the Web Audio graph only once, so the graph is built on
+    // first capture and kept: every element goes to a recording destination and, through a monitor gain, to the speakers.
+    const audioCaptureRef = useRef<{
+        destination: MediaStreamAudioDestinationNode;
+        monitor: GainNode;
+        connected: Set<HTMLMediaElement>;
+    } | null>(null);
+
+    const startAudioCapture = useCallback(async (): Promise<MediaStream | null> => {
+        const context = audioContextRef.current;
+        if (!context) return null;
+        try {
+            await context.resume();
+            if (!audioCaptureRef.current) {
+                const monitor = context.createGain();
+                monitor.connect(context.destination);
+                audioCaptureRef.current = { destination: context.createMediaStreamDestination(), monitor, connected: new Set() };
+            }
+            const capture = audioCaptureRef.current;
+            mediaElementsRef.current.forEach((element) => {
+                if (!(element instanceof HTMLMediaElement) || capture.connected.has(element)) return;
+                const source = context.createMediaElementSource(element);
+                source.connect(capture.destination);
+                source.connect(capture.monitor);
+                capture.connected.add(element);
+            });
+            capture.monitor.gain.value = 0;
+            return capture.destination.stream;
+        } catch (error) {
+            console.warn('Could not capture audio for export', error);
+            return null;
+        }
+    }, []);
+
+    const stopAudioCapture = useCallback(() => {
+        if (audioCaptureRef.current) audioCaptureRef.current.monitor.gain.value = 1;
+    }, []);
+
     // Expose canvas and audio context via ref for export
     useImperativeHandle(ref, () => ({
         getCanvas: () => canvasRef.current,
-        getAudioContext: () => audioContextRef.current
+        getAudioContext: () => audioContextRef.current,
+        startAudioCapture,
+        stopAudioCapture,
     }));
 
     // Load Media Assets into Elements
@@ -803,10 +852,12 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
                 if (videoEl.readyState >= 2) {
                     drawW = canvas.width;
                     drawH = drawW / (videoEl.videoWidth / videoEl.videoHeight);
+                    // A keyed clip is drawn from the keyed copy of this frame; if keying is not possible the original shows.
+                    const videoSource: CanvasImageSource = (clip.chromaKey && keyFrame(videoEl, clip.chromaKey)) || videoEl;
                     if (hasCustomLut) {
-                        drawWithCustomLut(videoEl);
+                        drawWithCustomLut(videoSource);
                     } else {
-                        drawBase(videoEl);
+                        drawBase(videoSource);
                     }
                 }
             } else if (media.type === 'image') {
@@ -822,10 +873,11 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
                         drawH = canvas.height;
                         drawW = canvas.height * ratio;
                     }
+                    const imageSource: CanvasImageSource = (clip.chromaKey && keyFrame(imgEl, clip.chromaKey)) || imgEl;
                     if (hasCustomLut) {
-                        drawWithCustomLut(imgEl);
+                        drawWithCustomLut(imageSource);
                     } else {
-                        drawBase(imgEl);
+                        drawBase(imageSource);
                     }
                 }
             }

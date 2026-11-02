@@ -5,6 +5,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { buildAudioFilterGraph, buildAudioEncodingOptions } = require('./ffmpeg-audio-graph');
+const { buildFfmpegChromaKeyFilter } = require('./ffmpeg-chroma');
 
 const execFileAsync = promisify(execFile);
 const ffmpegBinaryPath = ffmpegStatic ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : 'ffmpeg';
@@ -861,6 +863,32 @@ const hasCustomLut = (clip) => Boolean(
     && Number(clip?.filters?.lutIntensity) > 0,
 );
 
+/** Timing numbers every clip needs, whether its picture or its sound is being rendered. */
+const buildTimingEntry = (clip) => {
+    const start = Number(clip.start);
+    const end = Number(clip.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+    const speed = Math.max(0.05, Number(clip.speed) || 1);
+    const sourceIn = Math.max(0, Number(clip.sourceIn) || 0);
+    const sourceOut = Math.max(
+        sourceIn + 0.01,
+        Number(clip.sourceOut) || (sourceIn + Math.max(0.01, Number(clip.duration) || (end - start))),
+    );
+    const sourceRange = Math.max(0.01, sourceOut - sourceIn);
+    return {
+        start,
+        end,
+        visibleDuration: Math.max(0.05, end - start),
+        sourceIn,
+        sourceOut,
+        sourceRange,
+        speed,
+        playbackDuration: sourceRange / speed,
+        volume: clip.volume !== undefined ? Number(clip.volume) : 1,
+        volumeKeyframes: (clip.keyframes || []).filter((frame) => frame?.property === 'volume'),
+    };
+};
+
 const buildRenderPlan = ({ folderPath, project }) => {
     const timelineClips = Array.isArray(project?.timelineClips) ? project.timelineClips : [];
     const mediaItems = Array.isArray(project?.mediaItems) ? project.mediaItems : [];
@@ -868,6 +896,7 @@ const buildRenderPlan = ({ folderPath, project }) => {
     const { trackMap, trackIndexMap, isTrackActiveForMedia } = createTrackVisibilityResolver(project?.timelineTracks);
     const issues = [];
     const visualEntries = [];
+    const audioEntries = [];
     let hasActiveAudio = false;
 
     for (const clip of timelineClips) {
@@ -884,6 +913,18 @@ const buildRenderPlan = ({ folderPath, project }) => {
 
         if (mediaItem.type === 'audio') {
             hasActiveAudio = true;
+            const audioLabel = describeClipForExport(clip, mediaItem);
+            const audioSourcePath = resolveSourcePath(folderPath, mediaItem);
+            if (!audioSourcePath || !fs.existsSync(audioSourcePath)) {
+                issues.push(`${audioLabel}: source file is missing or offline.`);
+                continue;
+            }
+            const audioEntry = buildTimingEntry(clip);
+            if (!audioEntry) {
+                issues.push(`${audioLabel}: invalid timeline range.`);
+                continue;
+            }
+            audioEntries.push({ ...audioEntry, clip, mediaItem, sourcePath: audioSourcePath });
             continue;
         }
 
@@ -902,11 +943,6 @@ const buildRenderPlan = ({ folderPath, project }) => {
 
         if (clip.transitionOut?.type && Number(clip.transitionOut.duration) > 0) {
             issues.push(`${clipLabel}: transitions are not supported in HQ FFmpeg export yet.`);
-            continue;
-        }
-
-        if (clip.chromaKey) {
-            issues.push(`${clipLabel}: chroma key is not supported in HQ FFmpeg export yet.`);
             continue;
         }
 
@@ -955,6 +991,9 @@ const buildRenderPlan = ({ folderPath, project }) => {
             sourceRange,
             speed,
             playbackDuration,
+            volume: clip.volume !== undefined ? Number(clip.volume) : 1,
+            volumeKeyframes: (clip.keyframes || []).filter((frame) => frame?.property === 'volume'),
+            hasAudio: false,
         });
     }
 
@@ -977,6 +1016,7 @@ const buildRenderPlan = ({ folderPath, project }) => {
     const totalDuration = visualEntries.reduce((max, entry) => Math.max(max, entry.end), 0);
     return {
         visualEntries,
+        audioEntries,
         totalDuration: Math.max(0.05, totalDuration),
         hasActiveAudio,
     };
@@ -1008,7 +1048,12 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
         return outLabel;
     };
 
+    const audioSources = [];
+
     renderPlan.visualEntries.forEach((entry, clipIndex) => {
+        if (entry.hasAudio && entry.mediaItem.type === 'video') {
+            audioSources.push({ inputIndex, entry });
+        }
         const { clip, mediaItem, sourcePath, start, end, visibleDuration, sourceIn, sourceOut, sourceRange, speed, playbackDuration } = entry;
         const clipTag = `c${clipIndex}`;
         let currentLabel = `${clipTag}_fit`;
@@ -1032,6 +1077,11 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
                 + `${durationFilters.length > 0 ? `${durationFilters.join(',')},` : ''}`
                 + `scale=${width}:${height}:force_original_aspect_ratio=decrease,setsar=1[${currentLabel}]`,
             );
+        }
+
+        if (clip.chromaKey) {
+            currentLabel = addSimpleStep(currentLabel, buildFfmpegChromaKeyFilter(clip.chromaKey), clipTag, stepCounter);
+            stepCounter += 1;
         }
 
         const transform = clip.transform || { scale: 1, opacity: 1, position: { x: 50, y: 50 } };
@@ -1134,15 +1184,32 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
         inputIndex += 1;
     });
 
+    // Sound from clips on audio tracks. Each one is its own input after the picture inputs.
+    (renderPlan.audioEntries || []).forEach((entry) => {
+        cmd.input(entry.sourcePath);
+        audioSources.push({ inputIndex, entry });
+        inputIndex += 1;
+    });
+
+    const audioGraph = buildAudioFilterGraph({
+        sources: audioSources,
+        totalDuration: renderPlan.totalDuration,
+        buildAnimatedValueExpression,
+    });
+    if (audioGraph) complexFilter.push(...audioGraph.filters);
+
+    // complexFilter() below adds the -map for each labelled output, so none is repeated here.
+    // The video encoder presets all say -an; drop it when there is sound to write.
+    const videoOptions = buildVideoEncodingOptions(encoderConfig, outputSettings, bitrateKbps, false)
+        .filter((option) => !(audioGraph && option === '-an'));
     const outputOptions = [
-        '-map',
-        `[${canvasLabel}]`,
         `-r ${fps}`,
-        ...buildVideoEncodingOptions(encoderConfig, outputSettings, bitrateKbps, false),
+        ...videoOptions,
+        ...(audioGraph ? buildAudioEncodingOptions({ codec: outputSettings.codec, container: outputSettings.container }) : []),
     ];
 
     return cmd
-        .complexFilter(complexFilter, [canvasLabel])
+        .complexFilter(complexFilter, audioGraph ? [canvasLabel, audioGraph.outLabel] : [canvasLabel])
         .outputOptions(outputOptions)
         .output(outputPath);
 };
@@ -1151,8 +1218,10 @@ const buildStyleCommand = ({ sourcePath, outputPath, styleFilter, fps, encoderCo
     return ffmpeg(sourcePath)
         .outputOptions([
             `-vf ${styleFilter}`,
+            '-c:a copy',
             `-r ${fps}`,
-            ...buildVideoEncodingOptions(encoderConfig, outputSettings, Math.round(bitrateKbps * 1.1), true),
+            // keep the sound from the first pass: the presets say -an, which would strip it
+            ...buildVideoEncodingOptions(encoderConfig, outputSettings, Math.round(bitrateKbps * 1.1), true).filter((option) => option !== '-an'),
         ])
         .output(outputPath);
 };
@@ -1164,6 +1233,24 @@ const safeUnlink = async (targetPath) => {
     } catch {
         // ignore
     }
+};
+
+const audioStreamCache = new Map();
+
+/** Whether a source file has an audio stream. Cached per path. */
+const inspectHasAudio = async (sourcePath) => {
+    if (!sourcePath) return false;
+    if (audioStreamCache.has(sourcePath)) return audioStreamCache.get(sourcePath);
+    let combinedOutput = '';
+    try {
+        const { stdout, stderr } = await execFileAsync(ffmpegBinaryPath, ['-hide_banner', '-i', sourcePath]);
+        combinedOutput = `${stdout || ''}\n${stderr || ''}`;
+    } catch (error) {
+        combinedOutput = `${error?.stdout || ''}\n${error?.stderr || ''}`;
+    }
+    const hasAudio = /Stream #\d+:\d+[^:\n]*: Audio:/.test(combinedOutput);
+    audioStreamCache.set(sourcePath, hasAudio);
+    return hasAudio;
 };
 
 const resolveProjectSourceStreamInfo = async (renderPlan) => {
@@ -1198,6 +1285,11 @@ const renderTimeline = async (folderPath, project, settings, onProgress) => {
     }
 
     const renderPlan = buildRenderPlan({ folderPath, project });
+    await Promise.all(renderPlan.visualEntries.map(async (entry) => {
+        if (entry.mediaItem.type === 'video') {
+            entry.hasAudio = await inspectHasAudio(entry.sourcePath);
+        }
+    }));
     const sourceStreamInfo = await resolveProjectSourceStreamInfo(renderPlan);
     const outputSettings = {
         codec: requestedCodec,
@@ -1234,7 +1326,7 @@ const renderTimeline = async (folderPath, project, settings, onProgress) => {
         const note = [
             describeOutputFormat(outputSettings, encoderConfig),
             sourceLabel,
-            renderPlan.hasActiveAudio ? 'Audio tracks are ignored in HQ FFmpeg export.' : '',
+            renderPlan.audioEntries.length > 0 || renderPlan.visualEntries.some((entry) => entry.hasAudio) ? 'Audio mixed in' : '',
             encoderConfig.fallbackReason,
         ]
             .filter(Boolean)

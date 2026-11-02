@@ -1,4 +1,5 @@
 
+import { DEFAULT_CHROMA_KEY } from './utils/chromaKey';
 import { FAL_VIDEO_CATALOG } from './services/falVideoCatalog';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
@@ -8311,7 +8312,7 @@ function App() {
                                 ...clip,
                                 chromaKey: clip.chromaKey
                                     ? undefined
-                                    : { color: '#00ff00', tolerance: 0.35 },
+                                    : { ...DEFAULT_CHROMA_KEY },
                             }
                     )));
                 }

@@ -393,6 +393,10 @@ export type TimelineClip = {
   chromaKey?: {
     color: string;
     tolerance: number;
+    /** Soft edge width, 0 to 1. Missing on clips saved before it existed. */
+    softness?: number;
+    /** Spill removal, 0 to 1. Missing on clips saved before it existed. */
+    despill?: number;
   };
   kenBurns?: KenBurnsConfig;
 };

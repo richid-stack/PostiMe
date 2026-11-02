@@ -1,3 +1,4 @@
+import { DEFAULT_CHROMA_KEY } from '../utils/chromaKey';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ClipEffectLayer, ClipFilters, LutId, TimelineClip, MediaItem, EffectType, TransitionType, KenBurnsConfig, Keyframe } from '../types';
 import { FunctionDeclaration } from '@google/genai';
@@ -295,7 +296,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = (props) => {
         onUpdateTextConfig(selectedClip.id, newConfig as NonNullable<TimelineClip['textConfig']>);
     };
 
-    const handleChromaKeyChange = (field: 'color' | 'tolerance', value: string | number) => {
+    const handleChromaKeyChange = (field: 'color' | 'tolerance' | 'softness' | 'despill', value: string | number) => {
         if (!selectedClip || !selectedClip.chromaKey) return;
         const newConfig = { ...selectedClip.chromaKey, [field]: value };
         onUpdateChromaKeyConfig(selectedClip.id, newConfig);
@@ -537,6 +538,8 @@ const InspectorPanel: React.FC<InspectorPanelProps> = (props) => {
                                         <code className="pk-mono">{chromaKeyConfig.color}</code>
                                     </label>
                                     <SliderRow id="tolerance" label="Tolerance" value={chromaKeyConfig.tolerance} display={`${Math.round(chromaKeyConfig.tolerance * 100)}%`} min={0} max={1} step={0.01} onChange={(value) => handleChromaKeyChange('tolerance', value)} />
+                                    <SliderRow id="keySoftness" label="Edge softness" value={chromaKeyConfig.softness ?? DEFAULT_CHROMA_KEY.softness} display={`${Math.round((chromaKeyConfig.softness ?? DEFAULT_CHROMA_KEY.softness) * 100)}%`} min={0} max={1} step={0.01} onChange={(value) => handleChromaKeyChange('softness', value)} />
+                                    <SliderRow id="keyDespill" label="Spill removal" value={chromaKeyConfig.despill ?? DEFAULT_CHROMA_KEY.despill} display={`${Math.round((chromaKeyConfig.despill ?? DEFAULT_CHROMA_KEY.despill) * 100)}%`} min={0} max={1} step={0.01} onChange={(value) => handleChromaKeyChange('despill', value)} />
                                 </div>
                             )}
                         </section>

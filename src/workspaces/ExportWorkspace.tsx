@@ -416,16 +416,20 @@ const ExportWorkspace: React.FC<ExportWorkspaceProps> = ({ mediaItems, timelineC
             const fps = Math.max(1, normalizedSettings.fps || 30);
             const bitrateKbps = Math.max(500, normalizedSettings.bitrateKbps || 6000);
             const stream = canvas.captureStream(fps);
-            // Preview audio is still driven by HTMLAudioElements, so Quick Export records the visual canvas only.
-            const combinedStream = new MediaStream([...stream.getTracks()]);
+            // The player routes every clip's sound into a stream we can record next to the picture.
+            const audioStream = await playerRef.current?.startAudioCapture();
+            const audioTracks = audioStream?.getAudioTracks() ?? [];
+            const combinedStream = new MediaStream([...stream.getTracks(), ...audioTracks]);
 
             let recorder: MediaRecorder;
             try {
                 recorder = new MediaRecorder(combinedStream, {
                     mimeType: normalizedSettings.mimeType || 'video/webm',
                     videoBitsPerSecond: bitrateKbps * 1000,
+                    ...(audioTracks.length > 0 ? { audioBitsPerSecond: 192_000 } : {}),
                 });
             } catch (error) {
+                playerRef.current?.stopAudioCapture();
                 setStatus('ERROR');
                 setIsRendering(false);
                 setRenderDetail(error instanceof Error ? error.message : 'Could not start MediaRecorder.');
@@ -437,6 +441,7 @@ const ExportWorkspace: React.FC<ExportWorkspaceProps> = ({ mediaItems, timelineC
             };
 
             recorder.onstop = () => {
+                playerRef.current?.stopAudioCapture();
                 const blob = new Blob(chunksRef.current, { type: normalizedSettings.mimeType || 'video/webm' });
                 const url = URL.createObjectURL(blob);
                 setDownloadUrl(url);
