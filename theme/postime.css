@@ -1,0 +1,1502 @@
+/* ==========================================================================
+   PostiMe design language, applied to the editor.
+   Loaded AFTER index.css (see src/styles/index.ts). Source: design/PostiMe.html.
+
+   Rules of the language
+   - Neutral graphite dark. No purple, no blue cast. Light theme is PostiMe's white.
+   - One signature hue, clay, used for the active/selected/hero surface, with the stippled grain.
+   - CTA is the inverse pill (light on dark, black on white), never a coloured gradient.
+   - DM Sans, sentence case, weight 500 for titles. 12px is the smallest text anywhere.
+   - Big radii: 12 / 16 / 22 / 28 and pills. Hairlines instead of boxes in boxes.
+   - Motion answers an action; it is short and respects prefers-reduced-motion.
+   ========================================================================== */
+
+:root {
+  /* ---- palette (dark) ---- */
+  --pm-bg: #131314;
+  --pm-surface: #18181a;
+  --pm-raised: #1f1f23;
+  --pm-line: #34343b;
+  --pm-line-strong: #4a4a52;
+  --pm-tx: #e6e6ea;
+  --pm-mu: #9a9aa3;
+  --pm-fab: #e6e6ea;
+  --pm-fabt: #131314;
+  --pm-danger: #e2483d;
+  --pm-danger-rgb: 226 72 61;
+
+  /* ONE accent. Its colours (--ac-*) come from theme/accents.css and change with Settings > Appearance.
+     Default is clay. a = body, b = shadow corner, c = highlight corner of the stippled grain. */
+  --ac-text: var(--ac-text-d);
+
+  /* ---- type: PostiMe scale, 12px floor ---- */
+  --pm-font: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pm-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --fs-2xs: 0.75rem;     /* 12  captions, key hints, badges   */
+  --fs-xs: 0.8125rem;    /* 13  meta, helper copy              */
+  --fs-sm: 0.875rem;     /* 14  dense UI, list rows, inspector */
+  --fs-md: 1rem;         /* 16  body, panel titles             */
+  --fs-lg: 1.0625rem;    /* 17  buttons, controls              */
+  --fs-xl: 1.375rem;     /* 22  section titles                 */
+  --fs-2xl: 1.8125rem;   /* 29  screen titles                  */
+  --lh-tight: 1.2;
+  --lh-body: 1.5;
+
+  /* ---- shape ---- */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* ---- motion ---- */
+  --pm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --pm-dur: 0.28s;
+
+  /* ---- map PostiMe onto the editor's existing tokens ---- */
+  --app-bg: var(--pm-bg);
+  --app-panel: var(--pm-surface);
+  --app-card: var(--pm-raised);
+  --app-border: var(--pm-line);
+  --app-border-strong: var(--pm-line-strong);
+  --app-text: var(--pm-tx);
+  --app-muted: var(--pm-mu);
+  --app-accent: var(--ac-a);               /* solid fills, white text on top */
+  --app-accent-strong: var(--ac-strong);   /* hover */
+  --app-accent-text: var(--ac-text);       /* the accent used as text */
+  --app-warm: var(--ac-c);
+  --app-success: var(--ac-text);           /* single accent: success is the accent too, carried by an icon */
+  --app-danger: var(--pm-danger);
+  --app-glow: transparent;
+  --app-bg-rgb: 19 19 20;
+  --app-panel-rgb: 24 24 26;
+  --app-card-rgb: 31 31 35;
+  --app-muted-rgb: 154 154 163;
+  --app-accent-rgb: var(--ac-rgb);
+  --app-warm-rgb: var(--ac-rgb);
+  --apple-surface: rgb(255 255 255 / 0.05);
+  --apple-surface-strong: rgb(255 255 255 / 0.08);
+  --apple-hairline: var(--pm-line);
+  --apple-shadow: 0 10px 30px rgb(0 0 0 / 0.18);
+  --apple-inner-light: none;
+}
+
+/* ---- light theme: PostiMe's white ---- */
+body[data-theme="light"] {
+  --pm-bg: #ffffff;
+  --pm-surface: #f7f7f9;
+  --pm-raised: #f3f3f6;
+  --pm-line: #dcdce4;
+  --pm-line-strong: #bfbfca;
+  --pm-tx: #1b1b1f;
+  --pm-mu: #6b6b72;
+  --pm-fab: #000000;
+  --pm-fabt: #ffffff;
+  --ac-text: var(--ac-text-l);
+  --app-accent-text: var(--ac-text);
+  --app-success: var(--ac-a);
+  --app-bg-rgb: 255 255 255;
+  --app-panel-rgb: 247 247 249;
+  --app-card-rgb: 243 243 246;
+  --app-muted-rgb: 107 107 114;
+  --apple-surface: rgb(0 0 0 / 0.03);
+  --apple-surface-strong: rgb(0 0 0 / 0.05);
+  --apple-shadow: 0 10px 30px rgb(0 0 0 / 0.08);
+}
+
+/* ---- base ---- */
+body,
+body[data-theme="light"] {
+  font-family: var(--pm-font);
+  font-size: 16px;
+  line-height: var(--lh-body);
+  background-color: var(--pm-bg);
+  background-image: none;              /* no ambient glow behind the workspace */
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--pm-font);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+/* timecodes and numbers: tabular figures, the only monospace in the product */
+.font-mono, code, kbd, samp, [class*="timecode"] {
+  font-family: var(--pm-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- the CTA: inverse pill ---- */
+.app-button { border-radius: var(--radius-pill); }
+
+.app-primary,
+.app-button.app-primary {
+  background: var(--pm-fab);
+  background-image: none;
+  color: var(--pm-fabt);
+  border-color: transparent;
+  box-shadow: none;
+  font-weight: 500;
+}
+.app-primary:hover:not(:disabled),
+.app-button.app-primary:hover:not(:disabled) {
+  background: var(--pm-fab);
+  filter: brightness(0.92);
+}
+body[data-theme="light"] .app-primary:hover:not(:disabled) { filter: brightness(1.25); }
+.app-primary:disabled { opacity: 0.35; }
+
+/* fields */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+select,
+textarea {
+  border-radius: var(--radius-md);
+  border-width: 1.5px;
+  font-family: var(--pm-font);
+}
+input:focus,
+select:focus,
+textarea:focus { border-color: var(--pm-tx); }
+
+/* PostiMe had no keyboard focus style; the product needs one */
+:focus-visible {
+  outline: 2px solid var(--pm-tx);
+  outline-offset: 2px;
+}
+
+/* ---- the signature: stippled grain on the ONE active / hero surface ---- */
+.pm-grain,
+.toolbar-segmented__item--active,
+.project-hub__phase--active,
+.project-hub__next--attention {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  color: #fff;
+  background: var(--ac-a);
+  border-color: transparent;
+}
+.pm-grain::before,
+.toolbar-segmented__item--active::before,
+.project-hub__phase--active::before,
+.project-hub__next--attention::before {
+  content: "";
+  position: absolute;
+  inset: -32px;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 108% 118%, var(--ac-c) 0 34%, transparent 34.3%),
+    radial-gradient(circle at -4% -14%, var(--ac-b) 0 38%, transparent 38.3%),
+    var(--ac-a);
+  filter: url(#pm-grain-s);
+}
+.pm-grain--hero::before,
+.project-hub__next--attention::before {
+  inset: -90px;
+  filter: url(#pm-grain);
+}
+/* text on grain is always full-strength white: the highlight corner is light */
+.pm-grain *,
+.toolbar-segmented__item--active *,
+.project-hub__phase--active *,
+.project-hub__next--attention *:not(.app-primary):not(.app-button) {
+  color: #fff;
+  opacity: 1;
+}
+.project-hub__next--attention .app-primary { color: var(--pm-fabt); }
+
+/* ---- loading: PostiMe skeleton ---- */
+.pm-skeleton {
+  background: linear-gradient(100deg, var(--pm-raised) 30%, var(--pm-line) 50%, var(--pm-raised) 70%);
+  background-size: 200% 100%;
+  animation: pm-shimmer 1.4s linear infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes pm-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes pm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes pm-pop { 40% { transform: scale(1.2); } }
+
+/* press feedback, as in PostiMe */
+button:active:not(:disabled) { transform: scale(0.97); }
+
+/* neutral scrollbars (no tinted tracks) */
+* { scrollbar-color: var(--pm-line-strong) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---- inputs with a leading icon: the hub's compact padding must not swallow the icon gutter ---- */
+.app-input.pl-8 { padding-left: 2rem !important; }
+.app-input.pl-9 { padding-left: 2.25rem !important; }
+.app-input.pl-10 { padding-left: 2.5rem !important; }
+
+/* ---- node canvas (React Flow): graphite, not white ----
+   reactflow's own stylesheet is injected after this file, so these are scoped under .react-flow to win on specificity. */
+.react-flow .react-flow__minimap {
+  background-color: var(--pm-surface);
+  border: 1px solid var(--pm-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: none;
+}
+.react-flow .react-flow__minimap-mask { fill: rgb(var(--app-bg-rgb) / 0.72); }
+.react-flow .react-flow__minimap-node { fill: var(--pm-line-strong); stroke: var(--pm-mu); }
+.react-flow .react-flow__controls {
+  border: 1px solid var(--pm-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: none;
+}
+.react-flow .react-flow__controls-button {
+  background-color: var(--pm-raised);
+  border-bottom: 1px solid var(--pm-line);
+  color: var(--pm-tx);
+}
+.react-flow .react-flow__controls-button:last-child { border-bottom: 0; }
+.react-flow .react-flow__controls-button:hover { background-color: var(--pm-line); }
+.react-flow .react-flow__controls-button svg { fill: var(--pm-tx); }
+.react-flow .react-flow__attribution { display: none; }
+
+/* ---- generation dock: one row, expands on demand (was a 350px sticky block covering the prompt) ---- */
+.generation-action-bar {
+  background: var(--pm-bg);
+  backdrop-filter: none;
+  border-top: 1px solid var(--pm-line);
+}
+.generation-dock { display: flex; align-items: center; gap: 0.75rem; }
+.generation-dock__summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.25rem;
+  text-align: left;
+  border-radius: var(--radius-md);
+}
+.generation-dock__summary > .min-w-0 { display: flex; flex-direction: column; min-width: 0; }
+.generation-dock__status { font-size: var(--fs-md); font-weight: 500; color: var(--pm-tx); }
+.generation-dock__cost { font-size: var(--fs-xs); color: var(--pm-mu); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.generation-dock__chevron { margin-left: auto; color: var(--pm-mu); font-size: var(--fs-lg); }
+.generation-dock__cta { flex: none; min-height: 2.75rem; padding-inline: 1.5rem; font-size: var(--fs-lg); }
+.generation-dock__detail { display: grid; gap: 0.75rem; padding: 0.5rem 0.25rem 0.25rem; animation: pm-rise 0.28s var(--pm-ease) backwards; }
+.generation-dock__message {
+  margin-top: 0.5rem;
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--pm-raised);
+  color: var(--pm-tx);
+  font-size: var(--fs-sm);
+}
+.generation-readiness-dot--ready { background: var(--app-success); }
+.generation-readiness-dot--needed { background: var(--app-warm); }
+.generation-readiness-dot { flex: none; margin-top: 0; }
+
+/* ---- accent swatches (Settings, onboarding, header menu) ---- */
+.accent-swatches { display: flex; flex-wrap: wrap; gap: 14px 12px; }
+.accent-swatches__item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.accent-swatches__item > span { font-size: var(--fs-2xs); color: var(--pm-mu); }
+.accent-swatches__item > span.is-selected { color: var(--pm-tx); font-weight: 500; }
+.accent-swatch {
+  position: relative;
+  width: 40px; height: 40px;
+  padding: 0; border: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff;
+  background: var(--ac-a);
+  cursor: pointer;
+  transition: transform var(--pm-dur) var(--pm-ease), box-shadow var(--pm-dur) var(--pm-ease);
+}
+.accent-swatch--sm { width: 28px; height: 28px; }
+.accent-swatch::before {
+  content: "";
+  position: absolute; inset: -14px; z-index: -1;
+  background:
+    radial-gradient(circle at 108% 118%, var(--ac-c) 0 34%, transparent 34.3%),
+    radial-gradient(circle at -4% -14%, var(--ac-b) 0 38%, transparent 38.3%),
+    var(--ac-a);
+  filter: url(#pm-grain-s);
+}
+.accent-swatch:hover { transform: scale(1.07); }
+.accent-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--pm-bg), 0 0 0 4px var(--pm-tx); }
+
+/* ---- Settings > Appearance ---- */
+.appearance-block { display: flex; flex-direction: column; gap: 10px; }
+.appearance-block h4 { font-size: var(--fs-sm); font-weight: 500; color: var(--pm-mu); }
+.theme-cards { display: flex; gap: 12px; }
+.theme-card {
+  width: 148px; padding: 10px; border-radius: var(--radius-md);
+  border: 1.5px solid var(--pm-line); background: var(--pm-surface);
+  display: flex; flex-direction: column; gap: 8px; align-items: stretch; text-align: left;
+  color: var(--pm-tx); cursor: pointer;
+  transition: border-color var(--pm-dur) var(--pm-ease);
+}
+.theme-card:hover { border-color: var(--pm-line-strong); }
+.theme-card--on { border-color: var(--pm-tx); }
+.theme-card__preview { display: grid; grid-template-columns: 1fr 2fr; grid-template-rows: 1fr 1fr; gap: 4px; height: 64px; padding: 6px; border-radius: var(--radius-sm); }
+.theme-card__preview i { border-radius: 5px; display: block; }
+.theme-card__preview i:first-child { grid-row: span 2; }
+.theme-card--dark .theme-card__preview { background: #131314; }
+.theme-card--dark .theme-card__preview i { background: #2a2a2f; }
+.theme-card--dark .theme-card__preview i:last-child { background: var(--ac-a); }
+.theme-card--light .theme-card__preview { background: #ffffff; box-shadow: inset 0 0 0 1px #dcdce4; }
+.theme-card--light .theme-card__preview i { background: #e8e8ee; }
+.theme-card--light .theme-card__preview i:last-child { background: var(--ac-a); }
+.theme-card__label { font-size: var(--fs-sm); font-weight: 500; }
+.appearance-preview { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 16px; border: 1px solid var(--pm-line); border-radius: var(--radius-md); background: var(--pm-surface); }
+.appearance-preview__chip { padding: 6px 14px; border-radius: var(--radius-pill); font-size: var(--fs-xs); font-weight: 500; }
+.appearance-preview__bar { width: 120px; height: 6px; border-radius: 99px; background: var(--pm-line); overflow: hidden; }
+.appearance-preview__bar > span { display: block; width: 62%; height: 100%; background: var(--ac-a); }
+.appearance-preview__text { font-size: var(--fs-sm); color: var(--ac-text); font-weight: 500; }
+
+/* ---- assistant quick chips ---- */
+.assistant-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: var(--radius-pill);
+  border: 1px solid var(--pm-line); background: transparent; color: var(--pm-tx);
+  font-size: var(--fs-2xs); cursor: pointer;
+  transition: background var(--pm-dur) var(--pm-ease), border-color var(--pm-dur) var(--pm-ease);
+}
+.assistant-chip:hover { background: var(--pm-raised); border-color: var(--pm-line-strong); }
+
+/* ---- onboarding ---- */
+.onboarding__progress { display: flex; gap: 6px; margin: 16px 24px 0; }
+.onboarding__progress > span { flex: 1; height: 4px; border-radius: 99px; background: var(--pm-line); transition: background var(--pm-dur) var(--pm-ease); }
+.onboarding__progress > span.is-on { background: var(--ac-a); }
+.onboarding__choice {
+  display: flex; gap: 14px; align-items: flex-start; text-align: left;
+  padding: 18px; border-radius: var(--radius-lg);
+  border: 1.5px solid var(--pm-line); background: var(--pm-surface); color: var(--pm-tx);
+  cursor: pointer;
+  transition: border-color var(--pm-dur) var(--pm-ease), transform var(--pm-dur) var(--pm-ease);
+}
+.onboarding__choice:hover { border-color: var(--pm-line-strong); }
+.onboarding__choice--on { border-color: transparent; }
+.onboarding__choice-title { font-size: var(--fs-md); font-weight: 500; }
+.onboarding__choice-sub { font-size: var(--fs-xs); opacity: 0.75; margin-top: 2px; }
+.onboarding__done { display: inline-flex; width: 64px; height: 64px; border-radius: 50%; align-items: center; justify-content: center; }
+
+/* ---- model badges: one calm style, icon instead of emoji ---- */
+.model-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: var(--fs-2xs); font-weight: 500; line-height: 1.4;
+  color: var(--ac-text);
+  background: rgb(var(--ac-rgb) / 0.12);
+  border: 1px solid rgb(var(--ac-rgb) / 0.35);
+}
+
+/* ---- icon picker for custom boards ---- */
+.glyph-picker { display: flex; flex-wrap: wrap; gap: 4px; }
+.glyph-picker__item { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: var(--radius-sm); border: 1px solid var(--pm-line); background: transparent; color: var(--pm-mu); cursor: pointer; }
+.glyph-picker__item:hover { color: var(--pm-tx); background: var(--pm-raised); }
+.glyph-picker__item--on { color: #fff; border-color: transparent; background: var(--ac-a); }
+
+/* ---- generated cover art (world templates, presets): tonal duotone in the accent instead of a rainbow ---- */
+.wb-template__art,
+.wb-preset__art {
+  background-color: var(--ac-a) !important;
+  background-blend-mode: luminosity;
+}
+
+.app-menu__field--stack { flex-direction: column; align-items: flex-start; gap: 8px; }
+.app-menu__field--stack { width: 100%; }
+.app-menu__field--stack .accent-swatches { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; width: 100%; }
+.app-menu__field--stack .accent-swatch--sm { width: 100%; height: auto; aspect-ratio: 1; max-width: 28px; justify-self: center; }
+
+/* Embedded component styles (scene map, extra assets) read these names; give them PostiMe values so their indigo fallbacks never show. */
+:root {
+  --accent-primary: var(--ac-a);
+  --background-primary: var(--pm-bg);
+  --background-secondary: var(--pm-surface);
+  --background-tertiary: var(--pm-raised);
+  --background-hover: var(--pm-line);
+  --border-color: var(--pm-line);
+  --text-primary: var(--pm-tx);
+  --text-secondary: var(--pm-mu);
+}
+
+/* Theme-aware translucent grays: every opacity step, so light theme never shows a dark slab. */
+.project-hub .bg-gray-950\/5,
+.studio-workspace .bg-gray-950\/5,
+.page-shell .bg-gray-950\/5,
+.assistant-drawer .bg-gray-950\/5 { background-color: rgb(var(--app-bg-rgb) / 0.05); }
+.project-hub .bg-gray-950\/10,
+.studio-workspace .bg-gray-950\/10,
+.page-shell .bg-gray-950\/10,
+.assistant-drawer .bg-gray-950\/10 { background-color: rgb(var(--app-bg-rgb) / 0.10); }
+.project-hub .bg-gray-950\/15,
+.studio-workspace .bg-gray-950\/15,
+.page-shell .bg-gray-950\/15,
+.assistant-drawer .bg-gray-950\/15 { background-color: rgb(var(--app-bg-rgb) / 0.15); }
+.project-hub .bg-gray-950\/20,
+.studio-workspace .bg-gray-950\/20,
+.page-shell .bg-gray-950\/20,
+.assistant-drawer .bg-gray-950\/20 { background-color: rgb(var(--app-bg-rgb) / 0.20); }
+.project-hub .bg-gray-950\/25,
+.studio-workspace .bg-gray-950\/25,
+.page-shell .bg-gray-950\/25,
+.assistant-drawer .bg-gray-950\/25 { background-color: rgb(var(--app-bg-rgb) / 0.25); }
+.project-hub .bg-gray-950\/30,
+.studio-workspace .bg-gray-950\/30,
+.page-shell .bg-gray-950\/30,
+.assistant-drawer .bg-gray-950\/30 { background-color: rgb(var(--app-bg-rgb) / 0.30); }
+.project-hub .bg-gray-950\/35,
+.studio-workspace .bg-gray-950\/35,
+.page-shell .bg-gray-950\/35,
+.assistant-drawer .bg-gray-950\/35 { background-color: rgb(var(--app-bg-rgb) / 0.35); }
+.project-hub .bg-gray-950\/40,
+.studio-workspace .bg-gray-950\/40,
+.page-shell .bg-gray-950\/40,
+.assistant-drawer .bg-gray-950\/40 { background-color: rgb(var(--app-bg-rgb) / 0.40); }
+.project-hub .bg-gray-950\/45,
+.studio-workspace .bg-gray-950\/45,
+.page-shell .bg-gray-950\/45,
+.assistant-drawer .bg-gray-950\/45 { background-color: rgb(var(--app-bg-rgb) / 0.45); }
+.project-hub .bg-gray-950\/50,
+.studio-workspace .bg-gray-950\/50,
+.page-shell .bg-gray-950\/50,
+.assistant-drawer .bg-gray-950\/50 { background-color: rgb(var(--app-bg-rgb) / 0.50); }
+.project-hub .bg-gray-950\/55,
+.studio-workspace .bg-gray-950\/55,
+.page-shell .bg-gray-950\/55,
+.assistant-drawer .bg-gray-950\/55 { background-color: rgb(var(--app-bg-rgb) / 0.55); }
+.project-hub .bg-gray-950\/60,
+.studio-workspace .bg-gray-950\/60,
+.page-shell .bg-gray-950\/60,
+.assistant-drawer .bg-gray-950\/60 { background-color: rgb(var(--app-bg-rgb) / 0.60); }
+.project-hub .bg-gray-950\/65,
+.studio-workspace .bg-gray-950\/65,
+.page-shell .bg-gray-950\/65,
+.assistant-drawer .bg-gray-950\/65 { background-color: rgb(var(--app-bg-rgb) / 0.65); }
+.project-hub .bg-gray-950\/70,
+.studio-workspace .bg-gray-950\/70,
+.page-shell .bg-gray-950\/70,
+.assistant-drawer .bg-gray-950\/70 { background-color: rgb(var(--app-bg-rgb) / 0.70); }
+.project-hub .bg-gray-950\/75,
+.studio-workspace .bg-gray-950\/75,
+.page-shell .bg-gray-950\/75,
+.assistant-drawer .bg-gray-950\/75 { background-color: rgb(var(--app-bg-rgb) / 0.75); }
+.project-hub .bg-gray-950\/80,
+.studio-workspace .bg-gray-950\/80,
+.page-shell .bg-gray-950\/80,
+.assistant-drawer .bg-gray-950\/80 { background-color: rgb(var(--app-bg-rgb) / 0.80); }
+.project-hub .bg-gray-950\/85,
+.studio-workspace .bg-gray-950\/85,
+.page-shell .bg-gray-950\/85,
+.assistant-drawer .bg-gray-950\/85 { background-color: rgb(var(--app-bg-rgb) / 0.85); }
+.project-hub .bg-gray-950\/90,
+.studio-workspace .bg-gray-950\/90,
+.page-shell .bg-gray-950\/90,
+.assistant-drawer .bg-gray-950\/90 { background-color: rgb(var(--app-bg-rgb) / 0.90); }
+.project-hub .bg-gray-950\/95,
+.studio-workspace .bg-gray-950\/95,
+.page-shell .bg-gray-950\/95,
+.assistant-drawer .bg-gray-950\/95 { background-color: rgb(var(--app-bg-rgb) / 0.95); }
+.project-hub .bg-gray-900\/5,
+.studio-workspace .bg-gray-900\/5,
+.page-shell .bg-gray-900\/5,
+.assistant-drawer .bg-gray-900\/5 { background-color: rgb(var(--app-bg-rgb) / 0.05); }
+.project-hub .bg-gray-900\/10,
+.studio-workspace .bg-gray-900\/10,
+.page-shell .bg-gray-900\/10,
+.assistant-drawer .bg-gray-900\/10 { background-color: rgb(var(--app-bg-rgb) / 0.10); }
+.project-hub .bg-gray-900\/15,
+.studio-workspace .bg-gray-900\/15,
+.page-shell .bg-gray-900\/15,
+.assistant-drawer .bg-gray-900\/15 { background-color: rgb(var(--app-bg-rgb) / 0.15); }
+.project-hub .bg-gray-900\/20,
+.studio-workspace .bg-gray-900\/20,
+.page-shell .bg-gray-900\/20,
+.assistant-drawer .bg-gray-900\/20 { background-color: rgb(var(--app-bg-rgb) / 0.20); }
+.project-hub .bg-gray-900\/25,
+.studio-workspace .bg-gray-900\/25,
+.page-shell .bg-gray-900\/25,
+.assistant-drawer .bg-gray-900\/25 { background-color: rgb(var(--app-bg-rgb) / 0.25); }
+.project-hub .bg-gray-900\/30,
+.studio-workspace .bg-gray-900\/30,
+.page-shell .bg-gray-900\/30,
+.assistant-drawer .bg-gray-900\/30 { background-color: rgb(var(--app-bg-rgb) / 0.30); }
+.project-hub .bg-gray-900\/35,
+.studio-workspace .bg-gray-900\/35,
+.page-shell .bg-gray-900\/35,
+.assistant-drawer .bg-gray-900\/35 { background-color: rgb(var(--app-bg-rgb) / 0.35); }
+.project-hub .bg-gray-900\/40,
+.studio-workspace .bg-gray-900\/40,
+.page-shell .bg-gray-900\/40,
+.assistant-drawer .bg-gray-900\/40 { background-color: rgb(var(--app-bg-rgb) / 0.40); }
+.project-hub .bg-gray-900\/45,
+.studio-workspace .bg-gray-900\/45,
+.page-shell .bg-gray-900\/45,
+.assistant-drawer .bg-gray-900\/45 { background-color: rgb(var(--app-bg-rgb) / 0.45); }
+.project-hub .bg-gray-900\/50,
+.studio-workspace .bg-gray-900\/50,
+.page-shell .bg-gray-900\/50,
+.assistant-drawer .bg-gray-900\/50 { background-color: rgb(var(--app-bg-rgb) / 0.50); }
+.project-hub .bg-gray-900\/55,
+.studio-workspace .bg-gray-900\/55,
+.page-shell .bg-gray-900\/55,
+.assistant-drawer .bg-gray-900\/55 { background-color: rgb(var(--app-bg-rgb) / 0.55); }
+.project-hub .bg-gray-900\/60,
+.studio-workspace .bg-gray-900\/60,
+.page-shell .bg-gray-900\/60,
+.assistant-drawer .bg-gray-900\/60 { background-color: rgb(var(--app-bg-rgb) / 0.60); }
+.project-hub .bg-gray-900\/65,
+.studio-workspace .bg-gray-900\/65,
+.page-shell .bg-gray-900\/65,
+.assistant-drawer .bg-gray-900\/65 { background-color: rgb(var(--app-bg-rgb) / 0.65); }
+.project-hub .bg-gray-900\/70,
+.studio-workspace .bg-gray-900\/70,
+.page-shell .bg-gray-900\/70,
+.assistant-drawer .bg-gray-900\/70 { background-color: rgb(var(--app-bg-rgb) / 0.70); }
+.project-hub .bg-gray-900\/75,
+.studio-workspace .bg-gray-900\/75,
+.page-shell .bg-gray-900\/75,
+.assistant-drawer .bg-gray-900\/75 { background-color: rgb(var(--app-bg-rgb) / 0.75); }
+.project-hub .bg-gray-900\/80,
+.studio-workspace .bg-gray-900\/80,
+.page-shell .bg-gray-900\/80,
+.assistant-drawer .bg-gray-900\/80 { background-color: rgb(var(--app-bg-rgb) / 0.80); }
+.project-hub .bg-gray-900\/85,
+.studio-workspace .bg-gray-900\/85,
+.page-shell .bg-gray-900\/85,
+.assistant-drawer .bg-gray-900\/85 { background-color: rgb(var(--app-bg-rgb) / 0.85); }
+.project-hub .bg-gray-900\/90,
+.studio-workspace .bg-gray-900\/90,
+.page-shell .bg-gray-900\/90,
+.assistant-drawer .bg-gray-900\/90 { background-color: rgb(var(--app-bg-rgb) / 0.90); }
+.project-hub .bg-gray-900\/95,
+.studio-workspace .bg-gray-900\/95,
+.page-shell .bg-gray-900\/95,
+.assistant-drawer .bg-gray-900\/95 { background-color: rgb(var(--app-bg-rgb) / 0.95); }
+.project-hub .bg-gray-800\/5,
+.studio-workspace .bg-gray-800\/5,
+.page-shell .bg-gray-800\/5,
+.assistant-drawer .bg-gray-800\/5 { background-color: rgb(var(--app-panel-rgb) / 0.05); }
+.project-hub .bg-gray-800\/10,
+.studio-workspace .bg-gray-800\/10,
+.page-shell .bg-gray-800\/10,
+.assistant-drawer .bg-gray-800\/10 { background-color: rgb(var(--app-panel-rgb) / 0.10); }
+.project-hub .bg-gray-800\/15,
+.studio-workspace .bg-gray-800\/15,
+.page-shell .bg-gray-800\/15,
+.assistant-drawer .bg-gray-800\/15 { background-color: rgb(var(--app-panel-rgb) / 0.15); }
+.project-hub .bg-gray-800\/20,
+.studio-workspace .bg-gray-800\/20,
+.page-shell .bg-gray-800\/20,
+.assistant-drawer .bg-gray-800\/20 { background-color: rgb(var(--app-panel-rgb) / 0.20); }
+.project-hub .bg-gray-800\/25,
+.studio-workspace .bg-gray-800\/25,
+.page-shell .bg-gray-800\/25,
+.assistant-drawer .bg-gray-800\/25 { background-color: rgb(var(--app-panel-rgb) / 0.25); }
+.project-hub .bg-gray-800\/30,
+.studio-workspace .bg-gray-800\/30,
+.page-shell .bg-gray-800\/30,
+.assistant-drawer .bg-gray-800\/30 { background-color: rgb(var(--app-panel-rgb) / 0.30); }
+.project-hub .bg-gray-800\/35,
+.studio-workspace .bg-gray-800\/35,
+.page-shell .bg-gray-800\/35,
+.assistant-drawer .bg-gray-800\/35 { background-color: rgb(var(--app-panel-rgb) / 0.35); }
+.project-hub .bg-gray-800\/40,
+.studio-workspace .bg-gray-800\/40,
+.page-shell .bg-gray-800\/40,
+.assistant-drawer .bg-gray-800\/40 { background-color: rgb(var(--app-panel-rgb) / 0.40); }
+.project-hub .bg-gray-800\/45,
+.studio-workspace .bg-gray-800\/45,
+.page-shell .bg-gray-800\/45,
+.assistant-drawer .bg-gray-800\/45 { background-color: rgb(var(--app-panel-rgb) / 0.45); }
+.project-hub .bg-gray-800\/50,
+.studio-workspace .bg-gray-800\/50,
+.page-shell .bg-gray-800\/50,
+.assistant-drawer .bg-gray-800\/50 { background-color: rgb(var(--app-panel-rgb) / 0.50); }
+.project-hub .bg-gray-800\/55,
+.studio-workspace .bg-gray-800\/55,
+.page-shell .bg-gray-800\/55,
+.assistant-drawer .bg-gray-800\/55 { background-color: rgb(var(--app-panel-rgb) / 0.55); }
+.project-hub .bg-gray-800\/60,
+.studio-workspace .bg-gray-800\/60,
+.page-shell .bg-gray-800\/60,
+.assistant-drawer .bg-gray-800\/60 { background-color: rgb(var(--app-panel-rgb) / 0.60); }
+.project-hub .bg-gray-800\/65,
+.studio-workspace .bg-gray-800\/65,
+.page-shell .bg-gray-800\/65,
+.assistant-drawer .bg-gray-800\/65 { background-color: rgb(var(--app-panel-rgb) / 0.65); }
+.project-hub .bg-gray-800\/70,
+.studio-workspace .bg-gray-800\/70,
+.page-shell .bg-gray-800\/70,
+.assistant-drawer .bg-gray-800\/70 { background-color: rgb(var(--app-panel-rgb) / 0.70); }
+.project-hub .bg-gray-800\/75,
+.studio-workspace .bg-gray-800\/75,
+.page-shell .bg-gray-800\/75,
+.assistant-drawer .bg-gray-800\/75 { background-color: rgb(var(--app-panel-rgb) / 0.75); }
+.project-hub .bg-gray-800\/80,
+.studio-workspace .bg-gray-800\/80,
+.page-shell .bg-gray-800\/80,
+.assistant-drawer .bg-gray-800\/80 { background-color: rgb(var(--app-panel-rgb) / 0.80); }
+.project-hub .bg-gray-800\/85,
+.studio-workspace .bg-gray-800\/85,
+.page-shell .bg-gray-800\/85,
+.assistant-drawer .bg-gray-800\/85 { background-color: rgb(var(--app-panel-rgb) / 0.85); }
+.project-hub .bg-gray-800\/90,
+.studio-workspace .bg-gray-800\/90,
+.page-shell .bg-gray-800\/90,
+.assistant-drawer .bg-gray-800\/90 { background-color: rgb(var(--app-panel-rgb) / 0.90); }
+.project-hub .bg-gray-800\/95,
+.studio-workspace .bg-gray-800\/95,
+.page-shell .bg-gray-800\/95,
+.assistant-drawer .bg-gray-800\/95 { background-color: rgb(var(--app-panel-rgb) / 0.95); }
+.project-hub .bg-gray-700\/5,
+.studio-workspace .bg-gray-700\/5,
+.page-shell .bg-gray-700\/5,
+.assistant-drawer .bg-gray-700\/5 { background-color: rgb(var(--app-panel-rgb) / 0.05); }
+.project-hub .bg-gray-700\/10,
+.studio-workspace .bg-gray-700\/10,
+.page-shell .bg-gray-700\/10,
+.assistant-drawer .bg-gray-700\/10 { background-color: rgb(var(--app-panel-rgb) / 0.10); }
+.project-hub .bg-gray-700\/15,
+.studio-workspace .bg-gray-700\/15,
+.page-shell .bg-gray-700\/15,
+.assistant-drawer .bg-gray-700\/15 { background-color: rgb(var(--app-panel-rgb) / 0.15); }
+.project-hub .bg-gray-700\/20,
+.studio-workspace .bg-gray-700\/20,
+.page-shell .bg-gray-700\/20,
+.assistant-drawer .bg-gray-700\/20 { background-color: rgb(var(--app-panel-rgb) / 0.20); }
+.project-hub .bg-gray-700\/25,
+.studio-workspace .bg-gray-700\/25,
+.page-shell .bg-gray-700\/25,
+.assistant-drawer .bg-gray-700\/25 { background-color: rgb(var(--app-panel-rgb) / 0.25); }
+.project-hub .bg-gray-700\/30,
+.studio-workspace .bg-gray-700\/30,
+.page-shell .bg-gray-700\/30,
+.assistant-drawer .bg-gray-700\/30 { background-color: rgb(var(--app-panel-rgb) / 0.30); }
+.project-hub .bg-gray-700\/35,
+.studio-workspace .bg-gray-700\/35,
+.page-shell .bg-gray-700\/35,
+.assistant-drawer .bg-gray-700\/35 { background-color: rgb(var(--app-panel-rgb) / 0.35); }
+.project-hub .bg-gray-700\/40,
+.studio-workspace .bg-gray-700\/40,
+.page-shell .bg-gray-700\/40,
+.assistant-drawer .bg-gray-700\/40 { background-color: rgb(var(--app-panel-rgb) / 0.40); }
+.project-hub .bg-gray-700\/45,
+.studio-workspace .bg-gray-700\/45,
+.page-shell .bg-gray-700\/45,
+.assistant-drawer .bg-gray-700\/45 { background-color: rgb(var(--app-panel-rgb) / 0.45); }
+.project-hub .bg-gray-700\/50,
+.studio-workspace .bg-gray-700\/50,
+.page-shell .bg-gray-700\/50,
+.assistant-drawer .bg-gray-700\/50 { background-color: rgb(var(--app-panel-rgb) / 0.50); }
+.project-hub .bg-gray-700\/55,
+.studio-workspace .bg-gray-700\/55,
+.page-shell .bg-gray-700\/55,
+.assistant-drawer .bg-gray-700\/55 { background-color: rgb(var(--app-panel-rgb) / 0.55); }
+.project-hub .bg-gray-700\/60,
+.studio-workspace .bg-gray-700\/60,
+.page-shell .bg-gray-700\/60,
+.assistant-drawer .bg-gray-700\/60 { background-color: rgb(var(--app-panel-rgb) / 0.60); }
+.project-hub .bg-gray-700\/65,
+.studio-workspace .bg-gray-700\/65,
+.page-shell .bg-gray-700\/65,
+.assistant-drawer .bg-gray-700\/65 { background-color: rgb(var(--app-panel-rgb) / 0.65); }
+.project-hub .bg-gray-700\/70,
+.studio-workspace .bg-gray-700\/70,
+.page-shell .bg-gray-700\/70,
+.assistant-drawer .bg-gray-700\/70 { background-color: rgb(var(--app-panel-rgb) / 0.70); }
+.project-hub .bg-gray-700\/75,
+.studio-workspace .bg-gray-700\/75,
+.page-shell .bg-gray-700\/75,
+.assistant-drawer .bg-gray-700\/75 { background-color: rgb(var(--app-panel-rgb) / 0.75); }
+.project-hub .bg-gray-700\/80,
+.studio-workspace .bg-gray-700\/80,
+.page-shell .bg-gray-700\/80,
+.assistant-drawer .bg-gray-700\/80 { background-color: rgb(var(--app-panel-rgb) / 0.80); }
+.project-hub .bg-gray-700\/85,
+.studio-workspace .bg-gray-700\/85,
+.page-shell .bg-gray-700\/85,
+.assistant-drawer .bg-gray-700\/85 { background-color: rgb(var(--app-panel-rgb) / 0.85); }
+.project-hub .bg-gray-700\/90,
+.studio-workspace .bg-gray-700\/90,
+.page-shell .bg-gray-700\/90,
+.assistant-drawer .bg-gray-700\/90 { background-color: rgb(var(--app-panel-rgb) / 0.90); }
+.project-hub .bg-gray-700\/95,
+.studio-workspace .bg-gray-700\/95,
+.page-shell .bg-gray-700\/95,
+.assistant-drawer .bg-gray-700\/95 { background-color: rgb(var(--app-panel-rgb) / 0.95); }
+.assistant-drawer { background-color: var(--app-bg) !important; color: var(--app-text); border-color: var(--edit-hairline-strong, rgb(var(--app-muted-rgb) / 0.24)) !important; }
+
+/* Accent-filled controls always carry white text, in light and dark. */
+.page-shell [class~="bg-indigo-500"],
+.page-shell [class~="bg-indigo-600"],
+.page-shell [class~="bg-indigo-700"],
+.page-shell [class~="bg-indigo-800"],
+.page-shell [class~="bg-blue-500"],
+.page-shell [class~="bg-blue-600"],
+.page-shell [class~="bg-blue-700"],
+.page-shell [class~="bg-blue-800"],
+.page-shell [class~="bg-sky-500"],
+.page-shell [class~="bg-sky-600"],
+.page-shell [class~="bg-sky-700"],
+.page-shell [class~="bg-sky-800"],
+.page-shell [class~="bg-cyan-500"],
+.page-shell [class~="bg-cyan-600"],
+.page-shell [class~="bg-cyan-700"],
+.page-shell [class~="bg-cyan-800"],
+.page-shell [class~="bg-teal-500"],
+.page-shell [class~="bg-teal-600"],
+.page-shell [class~="bg-teal-700"],
+.page-shell [class~="bg-teal-800"],
+.page-shell [class~="bg-emerald-500"],
+.page-shell [class~="bg-emerald-600"],
+.page-shell [class~="bg-emerald-700"],
+.page-shell [class~="bg-emerald-800"],
+.page-shell [class~="bg-green-500"],
+.page-shell [class~="bg-green-600"],
+.page-shell [class~="bg-green-700"],
+.page-shell [class~="bg-green-800"],
+.page-shell [class~="bg-lime-500"],
+.page-shell [class~="bg-lime-600"],
+.page-shell [class~="bg-lime-700"],
+.page-shell [class~="bg-lime-800"],
+.page-shell [class~="bg-violet-500"],
+.page-shell [class~="bg-violet-600"],
+.page-shell [class~="bg-violet-700"],
+.page-shell [class~="bg-violet-800"],
+.page-shell [class~="bg-purple-500"],
+.page-shell [class~="bg-purple-600"],
+.page-shell [class~="bg-purple-700"],
+.page-shell [class~="bg-purple-800"],
+.page-shell [class~="bg-fuchsia-500"],
+.page-shell [class~="bg-fuchsia-600"],
+.page-shell [class~="bg-fuchsia-700"],
+.page-shell [class~="bg-fuchsia-800"],
+.page-shell [class~="bg-pink-500"],
+.page-shell [class~="bg-pink-600"],
+.page-shell [class~="bg-pink-700"],
+.page-shell [class~="bg-pink-800"],
+.page-shell [class~="bg-rose-500"],
+.page-shell [class~="bg-rose-600"],
+.page-shell [class~="bg-rose-700"],
+.page-shell [class~="bg-rose-800"],
+.page-shell [class~="bg-orange-500"],
+.page-shell [class~="bg-orange-600"],
+.page-shell [class~="bg-orange-700"],
+.page-shell [class~="bg-orange-800"],
+.page-shell [class~="bg-amber-500"],
+.page-shell [class~="bg-amber-600"],
+.page-shell [class~="bg-amber-700"],
+.page-shell [class~="bg-amber-800"],
+.page-shell [class~="bg-yellow-500"],
+.page-shell [class~="bg-yellow-600"],
+.page-shell [class~="bg-yellow-700"],
+.page-shell [class~="bg-yellow-800"],
+.studio-workspace [class~="bg-indigo-500"],
+.studio-workspace [class~="bg-indigo-600"],
+.studio-workspace [class~="bg-indigo-700"],
+.studio-workspace [class~="bg-indigo-800"],
+.studio-workspace [class~="bg-blue-500"],
+.studio-workspace [class~="bg-blue-600"],
+.studio-workspace [class~="bg-blue-700"],
+.studio-workspace [class~="bg-blue-800"],
+.studio-workspace [class~="bg-sky-500"],
+.studio-workspace [class~="bg-sky-600"],
+.studio-workspace [class~="bg-sky-700"],
+.studio-workspace [class~="bg-sky-800"],
+.studio-workspace [class~="bg-cyan-500"],
+.studio-workspace [class~="bg-cyan-600"],
+.studio-workspace [class~="bg-cyan-700"],
+.studio-workspace [class~="bg-cyan-800"],
+.studio-workspace [class~="bg-teal-500"],
+.studio-workspace [class~="bg-teal-600"],
+.studio-workspace [class~="bg-teal-700"],
+.studio-workspace [class~="bg-teal-800"],
+.studio-workspace [class~="bg-emerald-500"],
+.studio-workspace [class~="bg-emerald-600"],
+.studio-workspace [class~="bg-emerald-700"],
+.studio-workspace [class~="bg-emerald-800"],
+.studio-workspace [class~="bg-green-500"],
+.studio-workspace [class~="bg-green-600"],
+.studio-workspace [class~="bg-green-700"],
+.studio-workspace [class~="bg-green-800"],
+.studio-workspace [class~="bg-lime-500"],
+.studio-workspace [class~="bg-lime-600"],
+.studio-workspace [class~="bg-lime-700"],
+.studio-workspace [class~="bg-lime-800"],
+.studio-workspace [class~="bg-violet-500"],
+.studio-workspace [class~="bg-violet-600"],
+.studio-workspace [class~="bg-violet-700"],
+.studio-workspace [class~="bg-violet-800"],
+.studio-workspace [class~="bg-purple-500"],
+.studio-workspace [class~="bg-purple-600"],
+.studio-workspace [class~="bg-purple-700"],
+.studio-workspace [class~="bg-purple-800"],
+.studio-workspace [class~="bg-fuchsia-500"],
+.studio-workspace [class~="bg-fuchsia-600"],
+.studio-workspace [class~="bg-fuchsia-700"],
+.studio-workspace [class~="bg-fuchsia-800"],
+.studio-workspace [class~="bg-pink-500"],
+.studio-workspace [class~="bg-pink-600"],
+.studio-workspace [class~="bg-pink-700"],
+.studio-workspace [class~="bg-pink-800"],
+.studio-workspace [class~="bg-rose-500"],
+.studio-workspace [class~="bg-rose-600"],
+.studio-workspace [class~="bg-rose-700"],
+.studio-workspace [class~="bg-rose-800"],
+.studio-workspace [class~="bg-orange-500"],
+.studio-workspace [class~="bg-orange-600"],
+.studio-workspace [class~="bg-orange-700"],
+.studio-workspace [class~="bg-orange-800"],
+.studio-workspace [class~="bg-amber-500"],
+.studio-workspace [class~="bg-amber-600"],
+.studio-workspace [class~="bg-amber-700"],
+.studio-workspace [class~="bg-amber-800"],
+.studio-workspace [class~="bg-yellow-500"],
+.studio-workspace [class~="bg-yellow-600"],
+.studio-workspace [class~="bg-yellow-700"],
+.studio-workspace [class~="bg-yellow-800"],
+.project-hub [class~="bg-indigo-500"],
+.project-hub [class~="bg-indigo-600"],
+.project-hub [class~="bg-indigo-700"],
+.project-hub [class~="bg-indigo-800"],
+.project-hub [class~="bg-blue-500"],
+.project-hub [class~="bg-blue-600"],
+.project-hub [class~="bg-blue-700"],
+.project-hub [class~="bg-blue-800"],
+.project-hub [class~="bg-sky-500"],
+.project-hub [class~="bg-sky-600"],
+.project-hub [class~="bg-sky-700"],
+.project-hub [class~="bg-sky-800"],
+.project-hub [class~="bg-cyan-500"],
+.project-hub [class~="bg-cyan-600"],
+.project-hub [class~="bg-cyan-700"],
+.project-hub [class~="bg-cyan-800"],
+.project-hub [class~="bg-teal-500"],
+.project-hub [class~="bg-teal-600"],
+.project-hub [class~="bg-teal-700"],
+.project-hub [class~="bg-teal-800"],
+.project-hub [class~="bg-emerald-500"],
+.project-hub [class~="bg-emerald-600"],
+.project-hub [class~="bg-emerald-700"],
+.project-hub [class~="bg-emerald-800"],
+.project-hub [class~="bg-green-500"],
+.project-hub [class~="bg-green-600"],
+.project-hub [class~="bg-green-700"],
+.project-hub [class~="bg-green-800"],
+.project-hub [class~="bg-lime-500"],
+.project-hub [class~="bg-lime-600"],
+.project-hub [class~="bg-lime-700"],
+.project-hub [class~="bg-lime-800"],
+.project-hub [class~="bg-violet-500"],
+.project-hub [class~="bg-violet-600"],
+.project-hub [class~="bg-violet-700"],
+.project-hub [class~="bg-violet-800"],
+.project-hub [class~="bg-purple-500"],
+.project-hub [class~="bg-purple-600"],
+.project-hub [class~="bg-purple-700"],
+.project-hub [class~="bg-purple-800"],
+.project-hub [class~="bg-fuchsia-500"],
+.project-hub [class~="bg-fuchsia-600"],
+.project-hub [class~="bg-fuchsia-700"],
+.project-hub [class~="bg-fuchsia-800"],
+.project-hub [class~="bg-pink-500"],
+.project-hub [class~="bg-pink-600"],
+.project-hub [class~="bg-pink-700"],
+.project-hub [class~="bg-pink-800"],
+.project-hub [class~="bg-rose-500"],
+.project-hub [class~="bg-rose-600"],
+.project-hub [class~="bg-rose-700"],
+.project-hub [class~="bg-rose-800"],
+.project-hub [class~="bg-orange-500"],
+.project-hub [class~="bg-orange-600"],
+.project-hub [class~="bg-orange-700"],
+.project-hub [class~="bg-orange-800"],
+.project-hub [class~="bg-amber-500"],
+.project-hub [class~="bg-amber-600"],
+.project-hub [class~="bg-amber-700"],
+.project-hub [class~="bg-amber-800"],
+.project-hub [class~="bg-yellow-500"],
+.project-hub [class~="bg-yellow-600"],
+.project-hub [class~="bg-yellow-700"],
+.project-hub [class~="bg-yellow-800"],
+.assistant-drawer [class~="bg-indigo-500"],
+.assistant-drawer [class~="bg-indigo-600"],
+.assistant-drawer [class~="bg-indigo-700"],
+.assistant-drawer [class~="bg-indigo-800"],
+.assistant-drawer [class~="bg-blue-500"],
+.assistant-drawer [class~="bg-blue-600"],
+.assistant-drawer [class~="bg-blue-700"],
+.assistant-drawer [class~="bg-blue-800"],
+.assistant-drawer [class~="bg-sky-500"],
+.assistant-drawer [class~="bg-sky-600"],
+.assistant-drawer [class~="bg-sky-700"],
+.assistant-drawer [class~="bg-sky-800"],
+.assistant-drawer [class~="bg-cyan-500"],
+.assistant-drawer [class~="bg-cyan-600"],
+.assistant-drawer [class~="bg-cyan-700"],
+.assistant-drawer [class~="bg-cyan-800"],
+.assistant-drawer [class~="bg-teal-500"],
+.assistant-drawer [class~="bg-teal-600"],
+.assistant-drawer [class~="bg-teal-700"],
+.assistant-drawer [class~="bg-teal-800"],
+.assistant-drawer [class~="bg-emerald-500"],
+.assistant-drawer [class~="bg-emerald-600"],
+.assistant-drawer [class~="bg-emerald-700"],
+.assistant-drawer [class~="bg-emerald-800"],
+.assistant-drawer [class~="bg-green-500"],
+.assistant-drawer [class~="bg-green-600"],
+.assistant-drawer [class~="bg-green-700"],
+.assistant-drawer [class~="bg-green-800"],
+.assistant-drawer [class~="bg-lime-500"],
+.assistant-drawer [class~="bg-lime-600"],
+.assistant-drawer [class~="bg-lime-700"],
+.assistant-drawer [class~="bg-lime-800"],
+.assistant-drawer [class~="bg-violet-500"],
+.assistant-drawer [class~="bg-violet-600"],
+.assistant-drawer [class~="bg-violet-700"],
+.assistant-drawer [class~="bg-violet-800"],
+.assistant-drawer [class~="bg-purple-500"],
+.assistant-drawer [class~="bg-purple-600"],
+.assistant-drawer [class~="bg-purple-700"],
+.assistant-drawer [class~="bg-purple-800"],
+.assistant-drawer [class~="bg-fuchsia-500"],
+.assistant-drawer [class~="bg-fuchsia-600"],
+.assistant-drawer [class~="bg-fuchsia-700"],
+.assistant-drawer [class~="bg-fuchsia-800"],
+.assistant-drawer [class~="bg-pink-500"],
+.assistant-drawer [class~="bg-pink-600"],
+.assistant-drawer [class~="bg-pink-700"],
+.assistant-drawer [class~="bg-pink-800"],
+.assistant-drawer [class~="bg-rose-500"],
+.assistant-drawer [class~="bg-rose-600"],
+.assistant-drawer [class~="bg-rose-700"],
+.assistant-drawer [class~="bg-rose-800"],
+.assistant-drawer [class~="bg-orange-500"],
+.assistant-drawer [class~="bg-orange-600"],
+.assistant-drawer [class~="bg-orange-700"],
+.assistant-drawer [class~="bg-orange-800"],
+.assistant-drawer [class~="bg-amber-500"],
+.assistant-drawer [class~="bg-amber-600"],
+.assistant-drawer [class~="bg-amber-700"],
+.assistant-drawer [class~="bg-amber-800"],
+.assistant-drawer [class~="bg-yellow-500"],
+.assistant-drawer [class~="bg-yellow-600"],
+.assistant-drawer [class~="bg-yellow-700"],
+.assistant-drawer [class~="bg-yellow-800"],
+.app-menu [class~="bg-indigo-500"],
+.app-menu [class~="bg-indigo-600"],
+.app-menu [class~="bg-indigo-700"],
+.app-menu [class~="bg-indigo-800"],
+.app-menu [class~="bg-blue-500"],
+.app-menu [class~="bg-blue-600"],
+.app-menu [class~="bg-blue-700"],
+.app-menu [class~="bg-blue-800"],
+.app-menu [class~="bg-sky-500"],
+.app-menu [class~="bg-sky-600"],
+.app-menu [class~="bg-sky-700"],
+.app-menu [class~="bg-sky-800"],
+.app-menu [class~="bg-cyan-500"],
+.app-menu [class~="bg-cyan-600"],
+.app-menu [class~="bg-cyan-700"],
+.app-menu [class~="bg-cyan-800"],
+.app-menu [class~="bg-teal-500"],
+.app-menu [class~="bg-teal-600"],
+.app-menu [class~="bg-teal-700"],
+.app-menu [class~="bg-teal-800"],
+.app-menu [class~="bg-emerald-500"],
+.app-menu [class~="bg-emerald-600"],
+.app-menu [class~="bg-emerald-700"],
+.app-menu [class~="bg-emerald-800"],
+.app-menu [class~="bg-green-500"],
+.app-menu [class~="bg-green-600"],
+.app-menu [class~="bg-green-700"],
+.app-menu [class~="bg-green-800"],
+.app-menu [class~="bg-lime-500"],
+.app-menu [class~="bg-lime-600"],
+.app-menu [class~="bg-lime-700"],
+.app-menu [class~="bg-lime-800"],
+.app-menu [class~="bg-violet-500"],
+.app-menu [class~="bg-violet-600"],
+.app-menu [class~="bg-violet-700"],
+.app-menu [class~="bg-violet-800"],
+.app-menu [class~="bg-purple-500"],
+.app-menu [class~="bg-purple-600"],
+.app-menu [class~="bg-purple-700"],
+.app-menu [class~="bg-purple-800"],
+.app-menu [class~="bg-fuchsia-500"],
+.app-menu [class~="bg-fuchsia-600"],
+.app-menu [class~="bg-fuchsia-700"],
+.app-menu [class~="bg-fuchsia-800"],
+.app-menu [class~="bg-pink-500"],
+.app-menu [class~="bg-pink-600"],
+.app-menu [class~="bg-pink-700"],
+.app-menu [class~="bg-pink-800"],
+.app-menu [class~="bg-rose-500"],
+.app-menu [class~="bg-rose-600"],
+.app-menu [class~="bg-rose-700"],
+.app-menu [class~="bg-rose-800"],
+.app-menu [class~="bg-orange-500"],
+.app-menu [class~="bg-orange-600"],
+.app-menu [class~="bg-orange-700"],
+.app-menu [class~="bg-orange-800"],
+.app-menu [class~="bg-amber-500"],
+.app-menu [class~="bg-amber-600"],
+.app-menu [class~="bg-amber-700"],
+.app-menu [class~="bg-amber-800"],
+.app-menu [class~="bg-yellow-500"],
+.app-menu [class~="bg-yellow-600"],
+.app-menu [class~="bg-yellow-700"],
+.app-menu [class~="bg-yellow-800"],
+.settings [class~="bg-indigo-500"],
+.settings [class~="bg-indigo-600"],
+.settings [class~="bg-indigo-700"],
+.settings [class~="bg-indigo-800"],
+.settings [class~="bg-blue-500"],
+.settings [class~="bg-blue-600"],
+.settings [class~="bg-blue-700"],
+.settings [class~="bg-blue-800"],
+.settings [class~="bg-sky-500"],
+.settings [class~="bg-sky-600"],
+.settings [class~="bg-sky-700"],
+.settings [class~="bg-sky-800"],
+.settings [class~="bg-cyan-500"],
+.settings [class~="bg-cyan-600"],
+.settings [class~="bg-cyan-700"],
+.settings [class~="bg-cyan-800"],
+.settings [class~="bg-teal-500"],
+.settings [class~="bg-teal-600"],
+.settings [class~="bg-teal-700"],
+.settings [class~="bg-teal-800"],
+.settings [class~="bg-emerald-500"],
+.settings [class~="bg-emerald-600"],
+.settings [class~="bg-emerald-700"],
+.settings [class~="bg-emerald-800"],
+.settings [class~="bg-green-500"],
+.settings [class~="bg-green-600"],
+.settings [class~="bg-green-700"],
+.settings [class~="bg-green-800"],
+.settings [class~="bg-lime-500"],
+.settings [class~="bg-lime-600"],
+.settings [class~="bg-lime-700"],
+.settings [class~="bg-lime-800"],
+.settings [class~="bg-violet-500"],
+.settings [class~="bg-violet-600"],
+.settings [class~="bg-violet-700"],
+.settings [class~="bg-violet-800"],
+.settings [class~="bg-purple-500"],
+.settings [class~="bg-purple-600"],
+.settings [class~="bg-purple-700"],
+.settings [class~="bg-purple-800"],
+.settings [class~="bg-fuchsia-500"],
+.settings [class~="bg-fuchsia-600"],
+.settings [class~="bg-fuchsia-700"],
+.settings [class~="bg-fuchsia-800"],
+.settings [class~="bg-pink-500"],
+.settings [class~="bg-pink-600"],
+.settings [class~="bg-pink-700"],
+.settings [class~="bg-pink-800"],
+.settings [class~="bg-rose-500"],
+.settings [class~="bg-rose-600"],
+.settings [class~="bg-rose-700"],
+.settings [class~="bg-rose-800"],
+.settings [class~="bg-orange-500"],
+.settings [class~="bg-orange-600"],
+.settings [class~="bg-orange-700"],
+.settings [class~="bg-orange-800"],
+.settings [class~="bg-amber-500"],
+.settings [class~="bg-amber-600"],
+.settings [class~="bg-amber-700"],
+.settings [class~="bg-amber-800"],
+.settings [class~="bg-yellow-500"],
+.settings [class~="bg-yellow-600"],
+.settings [class~="bg-yellow-700"],
+.settings [class~="bg-yellow-800"] { color: #fff; }
+.page-shell [class~="bg-indigo-500"] .text-white,
+.page-shell [class~="bg-indigo-600"] .text-white,
+.page-shell [class~="bg-indigo-700"] .text-white,
+.page-shell [class~="bg-indigo-800"] .text-white,
+.page-shell [class~="bg-blue-500"] .text-white,
+.page-shell [class~="bg-blue-600"] .text-white,
+.page-shell [class~="bg-blue-700"] .text-white,
+.page-shell [class~="bg-blue-800"] .text-white,
+.page-shell [class~="bg-sky-500"] .text-white,
+.page-shell [class~="bg-sky-600"] .text-white,
+.page-shell [class~="bg-sky-700"] .text-white,
+.page-shell [class~="bg-sky-800"] .text-white,
+.page-shell [class~="bg-cyan-500"] .text-white,
+.page-shell [class~="bg-cyan-600"] .text-white,
+.page-shell [class~="bg-cyan-700"] .text-white,
+.page-shell [class~="bg-cyan-800"] .text-white,
+.page-shell [class~="bg-teal-500"] .text-white,
+.page-shell [class~="bg-teal-600"] .text-white,
+.page-shell [class~="bg-teal-700"] .text-white,
+.page-shell [class~="bg-teal-800"] .text-white,
+.page-shell [class~="bg-emerald-500"] .text-white,
+.page-shell [class~="bg-emerald-600"] .text-white,
+.page-shell [class~="bg-emerald-700"] .text-white,
+.page-shell [class~="bg-emerald-800"] .text-white,
+.page-shell [class~="bg-green-500"] .text-white,
+.page-shell [class~="bg-green-600"] .text-white,
+.page-shell [class~="bg-green-700"] .text-white,
+.page-shell [class~="bg-green-800"] .text-white,
+.page-shell [class~="bg-lime-500"] .text-white,
+.page-shell [class~="bg-lime-600"] .text-white,
+.page-shell [class~="bg-lime-700"] .text-white,
+.page-shell [class~="bg-lime-800"] .text-white,
+.page-shell [class~="bg-violet-500"] .text-white,
+.page-shell [class~="bg-violet-600"] .text-white,
+.page-shell [class~="bg-violet-700"] .text-white,
+.page-shell [class~="bg-violet-800"] .text-white,
+.page-shell [class~="bg-purple-500"] .text-white,
+.page-shell [class~="bg-purple-600"] .text-white,
+.page-shell [class~="bg-purple-700"] .text-white,
+.page-shell [class~="bg-purple-800"] .text-white,
+.page-shell [class~="bg-fuchsia-500"] .text-white,
+.page-shell [class~="bg-fuchsia-600"] .text-white,
+.page-shell [class~="bg-fuchsia-700"] .text-white,
+.page-shell [class~="bg-fuchsia-800"] .text-white,
+.page-shell [class~="bg-pink-500"] .text-white,
+.page-shell [class~="bg-pink-600"] .text-white,
+.page-shell [class~="bg-pink-700"] .text-white,
+.page-shell [class~="bg-pink-800"] .text-white,
+.page-shell [class~="bg-rose-500"] .text-white,
+.page-shell [class~="bg-rose-600"] .text-white,
+.page-shell [class~="bg-rose-700"] .text-white,
+.page-shell [class~="bg-rose-800"] .text-white,
+.page-shell [class~="bg-orange-500"] .text-white,
+.page-shell [class~="bg-orange-600"] .text-white,
+.page-shell [class~="bg-orange-700"] .text-white,
+.page-shell [class~="bg-orange-800"] .text-white,
+.page-shell [class~="bg-amber-500"] .text-white,
+.page-shell [class~="bg-amber-600"] .text-white,
+.page-shell [class~="bg-amber-700"] .text-white,
+.page-shell [class~="bg-amber-800"] .text-white,
+.page-shell [class~="bg-yellow-500"] .text-white,
+.page-shell [class~="bg-yellow-600"] .text-white,
+.page-shell [class~="bg-yellow-700"] .text-white,
+.page-shell [class~="bg-yellow-800"] .text-white,
+.studio-workspace [class~="bg-indigo-500"] .text-white,
+.studio-workspace [class~="bg-indigo-600"] .text-white,
+.studio-workspace [class~="bg-indigo-700"] .text-white,
+.studio-workspace [class~="bg-indigo-800"] .text-white,
+.studio-workspace [class~="bg-blue-500"] .text-white,
+.studio-workspace [class~="bg-blue-600"] .text-white,
+.studio-workspace [class~="bg-blue-700"] .text-white,
+.studio-workspace [class~="bg-blue-800"] .text-white,
+.studio-workspace [class~="bg-sky-500"] .text-white,
+.studio-workspace [class~="bg-sky-600"] .text-white,
+.studio-workspace [class~="bg-sky-700"] .text-white,
+.studio-workspace [class~="bg-sky-800"] .text-white,
+.studio-workspace [class~="bg-cyan-500"] .text-white,
+.studio-workspace [class~="bg-cyan-600"] .text-white,
+.studio-workspace [class~="bg-cyan-700"] .text-white,
+.studio-workspace [class~="bg-cyan-800"] .text-white,
+.studio-workspace [class~="bg-teal-500"] .text-white,
+.studio-workspace [class~="bg-teal-600"] .text-white,
+.studio-workspace [class~="bg-teal-700"] .text-white,
+.studio-workspace [class~="bg-teal-800"] .text-white,
+.studio-workspace [class~="bg-emerald-500"] .text-white,
+.studio-workspace [class~="bg-emerald-600"] .text-white,
+.studio-workspace [class~="bg-emerald-700"] .text-white,
+.studio-workspace [class~="bg-emerald-800"] .text-white,
+.studio-workspace [class~="bg-green-500"] .text-white,
+.studio-workspace [class~="bg-green-600"] .text-white,
+.studio-workspace [class~="bg-green-700"] .text-white,
+.studio-workspace [class~="bg-green-800"] .text-white,
+.studio-workspace [class~="bg-lime-500"] .text-white,
+.studio-workspace [class~="bg-lime-600"] .text-white,
+.studio-workspace [class~="bg-lime-700"] .text-white,
+.studio-workspace [class~="bg-lime-800"] .text-white,
+.studio-workspace [class~="bg-violet-500"] .text-white,
+.studio-workspace [class~="bg-violet-600"] .text-white,
+.studio-workspace [class~="bg-violet-700"] .text-white,
+.studio-workspace [class~="bg-violet-800"] .text-white,
+.studio-workspace [class~="bg-purple-500"] .text-white,
+.studio-workspace [class~="bg-purple-600"] .text-white,
+.studio-workspace [class~="bg-purple-700"] .text-white,
+.studio-workspace [class~="bg-purple-800"] .text-white,
+.studio-workspace [class~="bg-fuchsia-500"] .text-white,
+.studio-workspace [class~="bg-fuchsia-600"] .text-white,
+.studio-workspace [class~="bg-fuchsia-700"] .text-white,
+.studio-workspace [class~="bg-fuchsia-800"] .text-white,
+.studio-workspace [class~="bg-pink-500"] .text-white,
+.studio-workspace [class~="bg-pink-600"] .text-white,
+.studio-workspace [class~="bg-pink-700"] .text-white,
+.studio-workspace [class~="bg-pink-800"] .text-white,
+.studio-workspace [class~="bg-rose-500"] .text-white,
+.studio-workspace [class~="bg-rose-600"] .text-white,
+.studio-workspace [class~="bg-rose-700"] .text-white,
+.studio-workspace [class~="bg-rose-800"] .text-white,
+.studio-workspace [class~="bg-orange-500"] .text-white,
+.studio-workspace [class~="bg-orange-600"] .text-white,
+.studio-workspace [class~="bg-orange-700"] .text-white,
+.studio-workspace [class~="bg-orange-800"] .text-white,
+.studio-workspace [class~="bg-amber-500"] .text-white,
+.studio-workspace [class~="bg-amber-600"] .text-white,
+.studio-workspace [class~="bg-amber-700"] .text-white,
+.studio-workspace [class~="bg-amber-800"] .text-white,
+.studio-workspace [class~="bg-yellow-500"] .text-white,
+.studio-workspace [class~="bg-yellow-600"] .text-white,
+.studio-workspace [class~="bg-yellow-700"] .text-white,
+.studio-workspace [class~="bg-yellow-800"] .text-white,
+.project-hub [class~="bg-indigo-500"] .text-white,
+.project-hub [class~="bg-indigo-600"] .text-white,
+.project-hub [class~="bg-indigo-700"] .text-white,
+.project-hub [class~="bg-indigo-800"] .text-white,
+.project-hub [class~="bg-blue-500"] .text-white,
+.project-hub [class~="bg-blue-600"] .text-white,
+.project-hub [class~="bg-blue-700"] .text-white,
+.project-hub [class~="bg-blue-800"] .text-white,
+.project-hub [class~="bg-sky-500"] .text-white,
+.project-hub [class~="bg-sky-600"] .text-white,
+.project-hub [class~="bg-sky-700"] .text-white,
+.project-hub [class~="bg-sky-800"] .text-white,
+.project-hub [class~="bg-cyan-500"] .text-white,
+.project-hub [class~="bg-cyan-600"] .text-white,
+.project-hub [class~="bg-cyan-700"] .text-white,
+.project-hub [class~="bg-cyan-800"] .text-white,
+.project-hub [class~="bg-teal-500"] .text-white,
+.project-hub [class~="bg-teal-600"] .text-white,
+.project-hub [class~="bg-teal-700"] .text-white,
+.project-hub [class~="bg-teal-800"] .text-white,
+.project-hub [class~="bg-emerald-500"] .text-white,
+.project-hub [class~="bg-emerald-600"] .text-white,
+.project-hub [class~="bg-emerald-700"] .text-white,
+.project-hub [class~="bg-emerald-800"] .text-white,
+.project-hub [class~="bg-green-500"] .text-white,
+.project-hub [class~="bg-green-600"] .text-white,
+.project-hub [class~="bg-green-700"] .text-white,
+.project-hub [class~="bg-green-800"] .text-white,
+.project-hub [class~="bg-lime-500"] .text-white,
+.project-hub [class~="bg-lime-600"] .text-white,
+.project-hub [class~="bg-lime-700"] .text-white,
+.project-hub [class~="bg-lime-800"] .text-white,
+.project-hub [class~="bg-violet-500"] .text-white,
+.project-hub [class~="bg-violet-600"] .text-white,
+.project-hub [class~="bg-violet-700"] .text-white,
+.project-hub [class~="bg-violet-800"] .text-white,
+.project-hub [class~="bg-purple-500"] .text-white,
+.project-hub [class~="bg-purple-600"] .text-white,
+.project-hub [class~="bg-purple-700"] .text-white,
+.project-hub [class~="bg-purple-800"] .text-white,
+.project-hub [class~="bg-fuchsia-500"] .text-white,
+.project-hub [class~="bg-fuchsia-600"] .text-white,
+.project-hub [class~="bg-fuchsia-700"] .text-white,
+.project-hub [class~="bg-fuchsia-800"] .text-white,
+.project-hub [class~="bg-pink-500"] .text-white,
+.project-hub [class~="bg-pink-600"] .text-white,
+.project-hub [class~="bg-pink-700"] .text-white,
+.project-hub [class~="bg-pink-800"] .text-white,
+.project-hub [class~="bg-rose-500"] .text-white,
+.project-hub [class~="bg-rose-600"] .text-white,
+.project-hub [class~="bg-rose-700"] .text-white,
+.project-hub [class~="bg-rose-800"] .text-white,
+.project-hub [class~="bg-orange-500"] .text-white,
+.project-hub [class~="bg-orange-600"] .text-white,
+.project-hub [class~="bg-orange-700"] .text-white,
+.project-hub [class~="bg-orange-800"] .text-white,
+.project-hub [class~="bg-amber-500"] .text-white,
+.project-hub [class~="bg-amber-600"] .text-white,
+.project-hub [class~="bg-amber-700"] .text-white,
+.project-hub [class~="bg-amber-800"] .text-white,
+.project-hub [class~="bg-yellow-500"] .text-white,
+.project-hub [class~="bg-yellow-600"] .text-white,
+.project-hub [class~="bg-yellow-700"] .text-white,
+.project-hub [class~="bg-yellow-800"] .text-white,
+.assistant-drawer [class~="bg-indigo-500"] .text-white,
+.assistant-drawer [class~="bg-indigo-600"] .text-white,
+.assistant-drawer [class~="bg-indigo-700"] .text-white,
+.assistant-drawer [class~="bg-indigo-800"] .text-white,
+.assistant-drawer [class~="bg-blue-500"] .text-white,
+.assistant-drawer [class~="bg-blue-600"] .text-white,
+.assistant-drawer [class~="bg-blue-700"] .text-white,
+.assistant-drawer [class~="bg-blue-800"] .text-white,
+.assistant-drawer [class~="bg-sky-500"] .text-white,
+.assistant-drawer [class~="bg-sky-600"] .text-white,
+.assistant-drawer [class~="bg-sky-700"] .text-white,
+.assistant-drawer [class~="bg-sky-800"] .text-white,
+.assistant-drawer [class~="bg-cyan-500"] .text-white,
+.assistant-drawer [class~="bg-cyan-600"] .text-white,
+.assistant-drawer [class~="bg-cyan-700"] .text-white,
+.assistant-drawer [class~="bg-cyan-800"] .text-white,
+.assistant-drawer [class~="bg-teal-500"] .text-white,
+.assistant-drawer [class~="bg-teal-600"] .text-white,
+.assistant-drawer [class~="bg-teal-700"] .text-white,
+.assistant-drawer [class~="bg-teal-800"] .text-white,
+.assistant-drawer [class~="bg-emerald-500"] .text-white,
+.assistant-drawer [class~="bg-emerald-600"] .text-white,
+.assistant-drawer [class~="bg-emerald-700"] .text-white,
+.assistant-drawer [class~="bg-emerald-800"] .text-white,
+.assistant-drawer [class~="bg-green-500"] .text-white,
+.assistant-drawer [class~="bg-green-600"] .text-white,
+.assistant-drawer [class~="bg-green-700"] .text-white,
+.assistant-drawer [class~="bg-green-800"] .text-white,
+.assistant-drawer [class~="bg-lime-500"] .text-white,
+.assistant-drawer [class~="bg-lime-600"] .text-white,
+.assistant-drawer [class~="bg-lime-700"] .text-white,
+.assistant-drawer [class~="bg-lime-800"] .text-white,
+.assistant-drawer [class~="bg-violet-500"] .text-white,
+.assistant-drawer [class~="bg-violet-600"] .text-white,
+.assistant-drawer [class~="bg-violet-700"] .text-white,
+.assistant-drawer [class~="bg-violet-800"] .text-white,
+.assistant-drawer [class~="bg-purple-500"] .text-white,
+.assistant-drawer [class~="bg-purple-600"] .text-white,
+.assistant-drawer [class~="bg-purple-700"] .text-white,
+.assistant-drawer [class~="bg-purple-800"] .text-white,
+.assistant-drawer [class~="bg-fuchsia-500"] .text-white,
+.assistant-drawer [class~="bg-fuchsia-600"] .text-white,
+.assistant-drawer [class~="bg-fuchsia-700"] .text-white,
+.assistant-drawer [class~="bg-fuchsia-800"] .text-white,
+.assistant-drawer [class~="bg-pink-500"] .text-white,
+.assistant-drawer [class~="bg-pink-600"] .text-white,
+.assistant-drawer [class~="bg-pink-700"] .text-white,
+.assistant-drawer [class~="bg-pink-800"] .text-white,
+.assistant-drawer [class~="bg-rose-500"] .text-white,
+.assistant-drawer [class~="bg-rose-600"] .text-white,
+.assistant-drawer [class~="bg-rose-700"] .text-white,
+.assistant-drawer [class~="bg-rose-800"] .text-white,
+.assistant-drawer [class~="bg-orange-500"] .text-white,
+.assistant-drawer [class~="bg-orange-600"] .text-white,
+.assistant-drawer [class~="bg-orange-700"] .text-white,
+.assistant-drawer [class~="bg-orange-800"] .text-white,
+.assistant-drawer [class~="bg-amber-500"] .text-white,
+.assistant-drawer [class~="bg-amber-600"] .text-white,
+.assistant-drawer [class~="bg-amber-700"] .text-white,
+.assistant-drawer [class~="bg-amber-800"] .text-white,
+.assistant-drawer [class~="bg-yellow-500"] .text-white,
+.assistant-drawer [class~="bg-yellow-600"] .text-white,
+.assistant-drawer [class~="bg-yellow-700"] .text-white,
+.assistant-drawer [class~="bg-yellow-800"] .text-white,
+.app-menu [class~="bg-indigo-500"] .text-white,
+.app-menu [class~="bg-indigo-600"] .text-white,
+.app-menu [class~="bg-indigo-700"] .text-white,
+.app-menu [class~="bg-indigo-800"] .text-white,
+.app-menu [class~="bg-blue-500"] .text-white,
+.app-menu [class~="bg-blue-600"] .text-white,
+.app-menu [class~="bg-blue-700"] .text-white,
+.app-menu [class~="bg-blue-800"] .text-white,
+.app-menu [class~="bg-sky-500"] .text-white,
+.app-menu [class~="bg-sky-600"] .text-white,
+.app-menu [class~="bg-sky-700"] .text-white,
+.app-menu [class~="bg-sky-800"] .text-white,
+.app-menu [class~="bg-cyan-500"] .text-white,
+.app-menu [class~="bg-cyan-600"] .text-white,
+.app-menu [class~="bg-cyan-700"] .text-white,
+.app-menu [class~="bg-cyan-800"] .text-white,
+.app-menu [class~="bg-teal-500"] .text-white,
+.app-menu [class~="bg-teal-600"] .text-white,
+.app-menu [class~="bg-teal-700"] .text-white,
+.app-menu [class~="bg-teal-800"] .text-white,
+.app-menu [class~="bg-emerald-500"] .text-white,
+.app-menu [class~="bg-emerald-600"] .text-white,
+.app-menu [class~="bg-emerald-700"] .text-white,
+.app-menu [class~="bg-emerald-800"] .text-white,
+.app-menu [class~="bg-green-500"] .text-white,
+.app-menu [class~="bg-green-600"] .text-white,
+.app-menu [class~="bg-green-700"] .text-white,
+.app-menu [class~="bg-green-800"] .text-white,
+.app-menu [class~="bg-lime-500"] .text-white,
+.app-menu [class~="bg-lime-600"] .text-white,
+.app-menu [class~="bg-lime-700"] .text-white,
+.app-menu [class~="bg-lime-800"] .text-white,
+.app-menu [class~="bg-violet-500"] .text-white,
+.app-menu [class~="bg-violet-600"] .text-white,
+.app-menu [class~="bg-violet-700"] .text-white,
+.app-menu [class~="bg-violet-800"] .text-white,
+.app-menu [class~="bg-purple-500"] .text-white,
+.app-menu [class~="bg-purple-600"] .text-white,
+.app-menu [class~="bg-purple-700"] .text-white,
+.app-menu [class~="bg-purple-800"] .text-white,
+.app-menu [class~="bg-fuchsia-500"] .text-white,
+.app-menu [class~="bg-fuchsia-600"] .text-white,
+.app-menu [class~="bg-fuchsia-700"] .text-white,
+.app-menu [class~="bg-fuchsia-800"] .text-white,
+.app-menu [class~="bg-pink-500"] .text-white,
+.app-menu [class~="bg-pink-600"] .text-white,
+.app-menu [class~="bg-pink-700"] .text-white,
+.app-menu [class~="bg-pink-800"] .text-white,
+.app-menu [class~="bg-rose-500"] .text-white,
+.app-menu [class~="bg-rose-600"] .text-white,
+.app-menu [class~="bg-rose-700"] .text-white,
+.app-menu [class~="bg-rose-800"] .text-white,
+.app-menu [class~="bg-orange-500"] .text-white,
+.app-menu [class~="bg-orange-600"] .text-white,
+.app-menu [class~="bg-orange-700"] .text-white,
+.app-menu [class~="bg-orange-800"] .text-white,
+.app-menu [class~="bg-amber-500"] .text-white,
+.app-menu [class~="bg-amber-600"] .text-white,
+.app-menu [class~="bg-amber-700"] .text-white,
+.app-menu [class~="bg-amber-800"] .text-white,
+.app-menu [class~="bg-yellow-500"] .text-white,
+.app-menu [class~="bg-yellow-600"] .text-white,
+.app-menu [class~="bg-yellow-700"] .text-white,
+.app-menu [class~="bg-yellow-800"] .text-white,
+.settings [class~="bg-indigo-500"] .text-white,
+.settings [class~="bg-indigo-600"] .text-white,
+.settings [class~="bg-indigo-700"] .text-white,
+.settings [class~="bg-indigo-800"] .text-white,
+.settings [class~="bg-blue-500"] .text-white,
+.settings [class~="bg-blue-600"] .text-white,
+.settings [class~="bg-blue-700"] .text-white,
+.settings [class~="bg-blue-800"] .text-white,
+.settings [class~="bg-sky-500"] .text-white,
+.settings [class~="bg-sky-600"] .text-white,
+.settings [class~="bg-sky-700"] .text-white,
+.settings [class~="bg-sky-800"] .text-white,
+.settings [class~="bg-cyan-500"] .text-white,
+.settings [class~="bg-cyan-600"] .text-white,
+.settings [class~="bg-cyan-700"] .text-white,
+.settings [class~="bg-cyan-800"] .text-white,
+.settings [class~="bg-teal-500"] .text-white,
+.settings [class~="bg-teal-600"] .text-white,
+.settings [class~="bg-teal-700"] .text-white,
+.settings [class~="bg-teal-800"] .text-white,
+.settings [class~="bg-emerald-500"] .text-white,
+.settings [class~="bg-emerald-600"] .text-white,
+.settings [class~="bg-emerald-700"] .text-white,
+.settings [class~="bg-emerald-800"] .text-white,
+.settings [class~="bg-green-500"] .text-white,
+.settings [class~="bg-green-600"] .text-white,
+.settings [class~="bg-green-700"] .text-white,
+.settings [class~="bg-green-800"] .text-white,
+.settings [class~="bg-lime-500"] .text-white,
+.settings [class~="bg-lime-600"] .text-white,
+.settings [class~="bg-lime-700"] .text-white,
+.settings [class~="bg-lime-800"] .text-white,
+.settings [class~="bg-violet-500"] .text-white,
+.settings [class~="bg-violet-600"] .text-white,
+.settings [class~="bg-violet-700"] .text-white,
+.settings [class~="bg-violet-800"] .text-white,
+.settings [class~="bg-purple-500"] .text-white,
+.settings [class~="bg-purple-600"] .text-white,
+.settings [class~="bg-purple-700"] .text-white,
+.settings [class~="bg-purple-800"] .text-white,
+.settings [class~="bg-fuchsia-500"] .text-white,
+.settings [class~="bg-fuchsia-600"] .text-white,
+.settings [class~="bg-fuchsia-700"] .text-white,
+.settings [class~="bg-fuchsia-800"] .text-white,
+.settings [class~="bg-pink-500"] .text-white,
+.settings [class~="bg-pink-600"] .text-white,
+.settings [class~="bg-pink-700"] .text-white,
+.settings [class~="bg-pink-800"] .text-white,
+.settings [class~="bg-rose-500"] .text-white,
+.settings [class~="bg-rose-600"] .text-white,
+.settings [class~="bg-rose-700"] .text-white,
+.settings [class~="bg-rose-800"] .text-white,
+.settings [class~="bg-orange-500"] .text-white,
+.settings [class~="bg-orange-600"] .text-white,
+.settings [class~="bg-orange-700"] .text-white,
+.settings [class~="bg-orange-800"] .text-white,
+.settings [class~="bg-amber-500"] .text-white,
+.settings [class~="bg-amber-600"] .text-white,
+.settings [class~="bg-amber-700"] .text-white,
+.settings [class~="bg-amber-800"] .text-white,
+.settings [class~="bg-yellow-500"] .text-white,
+.settings [class~="bg-yellow-600"] .text-white,
+.settings [class~="bg-yellow-700"] .text-white,
+.settings [class~="bg-yellow-800"] .text-white { color: #fff; }

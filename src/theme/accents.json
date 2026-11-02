@@ -1,0 +1,10 @@
+[
+  { "id": "clay",     "label": "Clay",     "a": "#a8442f", "b": "#5a1e18", "c": "#c8654d", "textDark": "#e2917c", "textLight": "#a8442f" },
+  { "id": "rose",     "label": "Rose",     "a": "#9a4059", "b": "#4a1a2c", "c": "#cf7f98", "textDark": "#e29bb1", "textLight": "#9a4059" },
+  { "id": "gold",     "label": "Gold",     "a": "#85772f", "b": "#3b3413", "c": "#c4b05a", "textDark": "#d8c57a", "textLight": "#6f6325" },
+  { "id": "moss",     "label": "Moss",     "a": "#4a7a47", "b": "#1c3a1f", "c": "#86b37f", "textDark": "#9cc796", "textLight": "#3d6a3a" },
+  { "id": "teal",     "label": "Teal",     "a": "#2f7a74", "b": "#113a38", "c": "#6fb3a9", "textDark": "#8cc7bd", "textLight": "#276a65" },
+  { "id": "steel",    "label": "Steel",    "a": "#4a6f8f", "b": "#1b2e3f", "c": "#86a9c6", "textDark": "#9dbbd6", "textLight": "#3d5f7e" },
+  { "id": "plum",     "label": "Plum",     "a": "#6f4d8e", "b": "#2d2047", "c": "#a58bc7", "textDark": "#bba5d8", "textLight": "#5e3f7d" },
+  { "id": "graphite", "label": "Graphite", "a": "#5b5b64", "b": "#232327", "c": "#9a9aa4", "textDark": "#cfcfd6", "textLight": "#3b3b42" }
+]
