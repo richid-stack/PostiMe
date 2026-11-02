@@ -110,7 +110,7 @@ Platform rules decide the schedule here. YouTube, TikTok and Instagram each need
 
 | Feature | Realistic approach | Limit |
 | --- | --- | --- |
-| Green screen | Stills in-app today, video through CorridorKey on desktop, preview shader to build | The built-in key is a colour-distance key. It struggles with hair and uneven lighting. CorridorKey needs a local GPU setup and runs only in the desktop app. |
+| Green screen | Timeline preview (GPU shader) and HQ export (FFmpeg) key on chroma; stills in Compositing; hard shots through CorridorKey on desktop | The built-in key is a chroma-distance key, much better than RGB on uneven lighting but not a hair-quality keyer. CorridorKey needs a local GPU setup and runs only in the desktop app. |
 | Roto, tracking, VFX comp | AI mask and roto nodes, Natron or Nuke export | Not real-time in the app. Natron or Nuke must be installed. |
 | Recording | `getUserMedia` and `MediaRecorder`; desktop capture for screen | Recordings arrive as WebM, so convert with FFmpeg. Permissions differ by browser and OS. |
 | Multicam | Audio cross-correlation for sync | Many 4K streams in a browser need proxies. |
