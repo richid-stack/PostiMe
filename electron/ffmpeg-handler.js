@@ -7,6 +7,8 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { buildAudioFilterGraph, buildAudioEncodingOptions } = require('./ffmpeg-audio-graph');
 const { buildFfmpegChromaKeyFilter } = require('./ffmpeg-chroma');
+const { buildCompositeFilters, buildLutFilter, resolveBlendMode, serializeCubeLut } = require('./ffmpeg-composite');
+const os = require('os');
 
 const execFileAsync = promisify(execFile);
 const ffmpegBinaryPath = ffmpegStatic ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : 'ffmpeg';
@@ -946,19 +948,8 @@ const buildRenderPlan = ({ folderPath, project }) => {
             continue;
         }
 
-        if (clip.blendMode && clip.blendMode !== 'normal') {
+        if (clip.blendMode && clip.blendMode !== 'normal' && !resolveBlendMode(clip.blendMode)) {
             issues.push(`${clipLabel}: blend mode "${clip.blendMode}" is not supported in HQ FFmpeg export yet.`);
-            continue;
-        }
-
-        if (hasCustomLut(clip)) {
-            issues.push(`${clipLabel}: custom LUT export is not supported in HQ FFmpeg export yet.`);
-            continue;
-        }
-
-        const opacityKeyframes = (clip.keyframes || []).filter((frame) => frame?.property === 'opacity');
-        if (opacityKeyframes.length > 0) {
-            issues.push(`${clipLabel}: opacity keyframes are not supported in HQ FFmpeg export yet.`);
             continue;
         }
 
@@ -1141,7 +1132,10 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
         );
         stepCounter += 1;
 
-        const staticOpacity = clamp(Number(transform.opacity) || 1, 0, 1);
+        const opacityKeyframes = (clip.keyframes || []).filter((frame) => frame?.property === 'opacity');
+        const baseOpacity = clamp(Number.isFinite(Number(transform.opacity)) ? Number(transform.opacity) : 1, 0, 1);
+        // Keyframed opacity is applied when the clip is composited (see buildCompositeFilters), so skip the constant here.
+        const staticOpacity = opacityKeyframes.length > 0 ? 1 : baseOpacity;
         if (Math.abs(staticOpacity - 1) > 0.0001) {
             currentLabel = addSimpleStep(currentLabel, `format=rgba,colorchannelmixer=aa=${formatNumber(staticOpacity, 4)}`, clipTag, stepCounter);
             stepCounter += 1;
@@ -1152,6 +1146,15 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
             currentLabel = addSimpleStep(currentLabel, filterBody, clipTag, stepCounter);
             stepCounter += 1;
         });
+
+        if (entry.lutFile) {
+            const lutFilter = buildLutFilter(entry.lutFile, Boolean(clip.filters.customLut.is3d));
+            const lutStrength = clamp(Number(clip.filters.lutIntensity) || 0, 0, 100) / 100;
+            currentLabel = lutStrength >= 0.999
+                ? addSimpleStep(currentLabel, lutFilter, clipTag, stepCounter)
+                : addBlendEffectStep(currentLabel, lutFilter, formatNumber(lutStrength, 4), clipTag, 'lut');
+            stepCounter += 1;
+        }
 
         const effectLayers = getClipEffectLayers(clip)
             .filter((layer) => layer.enabled !== false && layer.intensity > 0.001);
@@ -1173,13 +1176,32 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
         stepCounter += 1;
 
         const nextCanvas = `canvas${clipIndex + 1}`;
-        complexFilter.push(
-            `[${canvasLabel}][${currentLabel}]overlay=`
-            + `x='(main_w*(${xExpr})/100)-overlay_w/2':`
-            + `y='(main_h*(${yExpr})/100)-overlay_h/2':`
-            + `enable='between(t,${formatNumber(start, 5)},${formatNumber(end, 5)})':`
-            + `eof_action=pass[${nextCanvas}]`,
-        );
+        const opacityExpr = opacityKeyframes.length > 0
+            ? buildAnimatedValueExpression({
+                baseValue: baseOpacity,
+                keyframes: opacityKeyframes,
+                speed,
+                timeVar: `(T-${formatNumber(start, 5)})`,
+                minValue: 0,
+                maxValue: 1,
+            })
+            : null;
+        complexFilter.push(...buildCompositeFilters({
+            tag: clipTag,
+            canvasLabel,
+            clipLabel: currentLabel,
+            nextLabel: nextCanvas,
+            xExpr: `(main_w*(${xExpr})/100)-overlay_w/2`,
+            yExpr: `(main_h*(${yExpr})/100)-overlay_h/2`,
+            start,
+            end,
+            width,
+            height,
+            fps,
+            totalDuration: renderPlan.totalDuration,
+            blendMode: clip.blendMode,
+            opacityExpr,
+        }));
         canvasLabel = nextCanvas;
         inputIndex += 1;
     });
@@ -1269,7 +1291,7 @@ const describeOutputFormat = (outputSettings, encoderConfig) => {
     return `${codecLabel} ${depthLabel} ${containerLabel}${encoderConfig?.label ? ` via ${encoderConfig.label}` : ''}`;
 };
 
-const renderTimeline = async (folderPath, project, settings, onProgress) => {
+const renderTimelineInner = async (folderPath, project, settings, onProgress, tempFiles) => {
     const width = Math.max(16, Number(settings?.width) || 1920);
     const height = Math.max(16, Number(settings?.height) || 1080);
     const fps = Math.max(1, Number(settings?.fps) || 30);
@@ -1285,6 +1307,14 @@ const renderTimeline = async (folderPath, project, settings, onProgress) => {
     }
 
     const renderPlan = buildRenderPlan({ folderPath, project });
+    // FFmpeg reads custom LUTs from .cube files, so write each one next to the output and remove it afterwards.
+    renderPlan.visualEntries.forEach((entry, index) => {
+        if (!hasCustomLut(entry.clip)) return;
+        const lutPath = path.join(os.tmpdir(), `postime-lut-${process.pid}-${Date.now()}-${index}.cube`);
+        fs.writeFileSync(lutPath, serializeCubeLut(entry.clip.filters.customLut));
+        tempFiles.push(lutPath);
+        entry.lutFile = lutPath;
+    });
     await Promise.all(renderPlan.visualEntries.map(async (entry) => {
         if (entry.mediaItem.type === 'video') {
             entry.hasAudio = await inspectHasAudio(entry.sourcePath);
@@ -1411,6 +1441,15 @@ const renderTimeline = async (folderPath, project, settings, onProgress) => {
     }
 
     return outputPath;
+};
+
+const renderTimeline = async (folderPath, project, settings, onProgress) => {
+    const tempFiles = [];
+    try {
+        return await renderTimelineInner(folderPath, project, settings, onProgress, tempFiles);
+    } finally {
+        await Promise.all(tempFiles.map((file) => safeUnlink(file)));
+    }
 };
 
 module.exports = { renderTimeline, prepareVideoProxy };

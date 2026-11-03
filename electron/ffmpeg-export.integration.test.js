@@ -76,3 +76,48 @@ test('HQ export keeps audio at the right place and keys the green screen', { ski
     assert.ok(bandLevel(output, 0.1, 0.6, 200) > -40, "the green-screen clip's own sound is kept");
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('HQ export applies blend modes, custom LUTs and opacity keyframes', { skip: !ffmpegPath && 'no FFmpeg binary' }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'postime-hq-comp-'));
+    const solid = (name, hex) => run(['-f', 'lavfi', '-i', `color=c=0x${hex}:s=320x180:r=30:d=3`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(dir, `${name}.mp4`)]);
+    solid('back', '804020');
+    solid('front', 'c86432');
+    solid('white', 'ffffff');
+    run(['-f', 'lavfi', '-i', 'color=c=0x00c030:s=320x180:r=30:d=3,drawbox=x=100:y=50:w=80:h=100:color=0xd9a07a:t=fill', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(dir, 'green.mp4')]);
+
+    const { renderTimeline } = require('./ffmpeg-handler.js');
+    const mediaItems = ['back', 'front', 'white', 'green'].map((id) => ({ id, type: 'video', path: `${id}.mp4` }));
+    const timelineTracks = [{ id: 'v1', type: 'video', isMuted: false }, { id: 'v2', type: 'video', isMuted: false }];
+    const clip = (id, mediaId, trackId, extra = {}) => ({ id, mediaId, trackId, start: 0, end: 3, duration: 3, speed: 1, sourceIn: 0, sourceOut: 3, effect: null, ...extra });
+    // .cube order has red varying fastest, so each output triple here is (b, g, r): a red/blue swap.
+    const swapLut = { title: 'swap', size: 2, is3d: true, domainMin: [0, 0, 0], domainMax: [1, 1, 1], data: Float32Array.from(Array.from({ length: 8 }, (_, i) => [(i >> 2) & 1, (i >> 1) & 1, i & 1]).flat()) };
+    const options = (filename) => ({ width: 320, height: 180, fps: 30, bitrateKbps: 3000, videoCodec: 'h264', container: 'mp4', filename, gpuAcceleration: 'off' });
+    const render = (filename, top) => renderTimeline(dir, { mediaItems, timelineTracks, timelineClips: [clip('b', 'back', 'v1'), top] }, options(filename));
+    const near = (actual, expected, label, tolerance = 8) => {
+        actual.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) <= tolerance, `${label}: expected about ${expected}, got ${actual}`));
+    };
+
+    near(pixelAt(await render('multiply.mp4', clip('f', 'front', 'v2', { blendMode: 'multiply' })), 1, 160, 90, 320, 180), [100, 25, 6], 'multiply');
+    near(pixelAt(await render('screen.mp4', clip('f', 'front', 'v2', { blendMode: 'screen' })), 1, 160, 90, 320, 180), [227, 139, 75], 'screen');
+
+    const ramp = [
+        { id: 'k1', time: 0, value: 0, property: 'opacity', easing: 'linear' },
+        { id: 'k2', time: 2, value: 1, property: 'opacity', easing: 'linear' },
+    ];
+    near(pixelAt(await render('opacity.mp4', clip('f', 'white', 'v2', { keyframes: ramp })), 1, 160, 90, 320, 180), [191, 159, 143], 'half-way opacity');
+
+    near(pixelAt(await render('lut.mp4', clip('f', 'front', 'v2', { filters: { lut: 'custom', customLut: swapLut, lutIntensity: 100 } })), 1, 160, 90, 320, 180), [50, 100, 200], 'custom LUT');
+    near(pixelAt(await render('lut-half.mp4', clip('f', 'front', 'v2', { filters: { lut: 'custom', customLut: swapLut, lutIntensity: 50 } })), 1, 160, 90, 320, 180), [125, 100, 125], 'custom LUT at 50%');
+
+    // A keyed clip must stay transparent after a grade and a LUT: the screen shows the background, the subject is graded.
+    const keyed = await render('key-lut.mp4', clip('f', 'green', 'v2', {
+        chromaKey: { color: '#00c030', tolerance: 0.35, softness: 0.25, despill: 0.5 },
+        filters: { brightness: 100, lut: 'custom', customLut: swapLut, lutIntensity: 100 },
+    }));
+    near(pixelAt(keyed, 1, 10, 10, 320, 180), [128, 64, 32], 'keyed screen shows the background', 10);
+    near(pixelAt(keyed, 1, 160, 90, 320, 180), [122, 160, 217], 'keyed subject is graded', 12);
+
+    // A blend mode the export cannot reproduce is refused with a message rather than rendered wrong.
+    await assert.rejects(render('bad.mp4', clip('f', 'front', 'v2', { blendMode: 'hue' })), /blend/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
