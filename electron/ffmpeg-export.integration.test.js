@@ -121,3 +121,56 @@ test('HQ export applies blend modes, custom LUTs and opacity keyframes', { skip:
     await assert.rejects(render('bad.mp4', clip('f', 'front', 'v2', { blendMode: 'hue' })), /blend/i);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('HQ export draws titles from the images the app sends, and refuses a title that was never drawn', { skip: !ffmpegPath && 'no FFmpeg binary' }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'postime-hq-title-'));
+    run(['-f', 'lavfi', '-i', 'color=c=0x304050:s=320x180:r=30:d=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(dir, 'back.mp4')]);
+    // stands in for the PNG the app draws for a title: a red 100 x 40 block
+    run(['-f', 'lavfi', '-i', 'color=c=0xff0000:s=100x40,format=rgba', '-frames:v', '1', path.join(dir, 'title.png')]);
+    const dataUrl = `data:image/png;base64,${fs.readFileSync(path.join(dir, 'title.png')).toString('base64')}`;
+
+    const { renderTimeline } = require('./ffmpeg-handler.js');
+    const mediaItems = [
+        { id: 'back', type: 'video', path: 'back.mp4' },
+        // what the app stores behind a title: a transparent picture, not a file on disk
+        { id: 'title', type: 'image', url: 'data:image/png;base64,iVBORw0KGgo=' },
+    ];
+    const timelineTracks = [{ id: 'v1', type: 'video', isMuted: false }, { id: 'v2', type: 'video', isMuted: false }];
+    const backClip = { id: 'b', mediaId: 'back', trackId: 'v1', start: 0, end: 3, duration: 3, speed: 1, sourceIn: 0, sourceOut: 3, effect: null };
+    const titleClip = (extra = {}) => ({
+        id: 't', mediaId: 'title', trackId: 'v2', start: 0, end: 3, duration: 3, speed: 1, sourceIn: 0, sourceOut: 3, effect: null,
+        textConfig: { content: 'Title', font: 'Arial', size: 40, color: '#ffffff', position: 'center' },
+        textRaster: { data: dataUrl, width: 100, height: 40, centerX: 25, centerY: 75 },
+        ...extra,
+    });
+    const options = (filename) => ({ width: 320, height: 180, fps: 30, bitrateKbps: 3000, videoCodec: 'h264', container: 'mp4', filename, gpuAcceleration: 'off' });
+    const render = (filename, clip) => renderTimeline(dir, { mediaItems, timelineTracks, timelineClips: [backClip, clip] }, options(filename));
+    const isRed = (pixel) => pixel[0] > 200 && pixel[1] < 60 && pixel[2] < 60;
+    const isBackground = (pixel) => Math.abs(pixel[0] - 48) < 14 && Math.abs(pixel[1] - 64) < 14 && Math.abs(pixel[2] - 80) < 14;
+
+    // centre at 25 percent across and 75 percent down: the block covers x 30..130, y 115..155
+    const placed = await render('title-placed.mp4', titleClip());
+    assert.ok(isRed(pixelAt(placed, 1, 80, 135, 320, 180)), 'title block is where the app said its middle is');
+    assert.ok(isBackground(pixelAt(placed, 1, 250, 135, 320, 180)), 'nothing to the right of it');
+    assert.ok(isBackground(pixelAt(placed, 1, 80, 40, 320, 180)), 'nothing above it');
+
+    // a title position of 70 percent across is an offset from the usual 50, so the block middle lands at 25 + 20 = 45 percent
+    const offset = await render('title-offset.mp4', titleClip({ transform: { scale: 1, opacity: 1, position: { x: 70, y: 50 } } }));
+    assert.ok(isRed(pixelAt(offset, 1, 144, 135, 320, 180)), 'transform offset moves the title');
+    assert.ok(isBackground(pixelAt(offset, 1, 80, 135, 320, 180)), 'and it left its old place');
+
+    // opacity ramp: half way at one second
+    const fading = await render('title-fade.mp4', titleClip({ keyframes: [
+        { id: 'k1', time: 0, value: 0, property: 'opacity', easing: 'linear' },
+        { id: 'k2', time: 2, value: 1, property: 'opacity', easing: 'linear' },
+    ] }));
+    const half = pixelAt(fading, 1, 80, 135, 320, 180);
+    assert.ok(half[0] > 120 && half[0] < 180 && half[1] > 10 && half[1] < 60, `title is half faded, got ${half}`);
+
+    // a title with no text draws nothing but does not stop the export
+    const empty = await render('title-empty.mp4', titleClip({ textRaster: { empty: true } }));
+    assert.ok(isBackground(pixelAt(empty, 1, 80, 135, 320, 180)));
+
+    await assert.rejects(render('title-missing.mp4', titleClip({ textRaster: undefined })), /title was not drawn/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

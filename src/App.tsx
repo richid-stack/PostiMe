@@ -181,6 +181,7 @@ import {
     type OpenTimelineIOImportMode,
 } from './utils/openTimelineIOImport';
 import { subscribeUsage } from './utils/usageTracker';
+import { prepareProjectForHqExport } from './utils/hqExportPrep';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { EFFECT_STACK_PRESETS, TRANSITIONS } from './constants';
 import { handleCloudOAuthCallback } from './services/cloudAuthService';
@@ -5488,11 +5489,14 @@ function App() {
                 const filename = `agent-review-${Date.now()}.mp4`;
                 const renderResult = await window.electron.project.exportVideo({
                     folderPath: projectPath,
-                    project: {
-                        timelineClips,
-                        timelineTracks,
-                        mediaItems,
-                    },
+                    project: await prepareProjectForHqExport(
+                        {
+                            timelineClips,
+                            timelineTracks,
+                            mediaItems,
+                        },
+                        { width: 1280, height: 720 },
+                    ),
                     settings: {
                         filename,
                         width: 1280,

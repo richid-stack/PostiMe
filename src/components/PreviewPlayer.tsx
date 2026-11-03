@@ -4,6 +4,7 @@ import { PlayIcon } from './icons';
 import { buildFilterString, getBloomStrength, getGrainStrength, getHalationStrength, getVignetteStrength, normalizeFilters } from '../utils/colorGrading';
 import { applyCubeLutToImageData } from '../utils/lut';
 import { keyFrame } from '../utils/chromaKeyGL';
+import { drawTitleLocal, layoutTitle, resolveTitleColors } from '../utils/titleLayout';
 import { buildStyleFilterForEffect, getClipEffectLayers, hasOverlayRenderer, mergeFilterChunk } from '../utils/effects';
 
 export interface PreviewPlayerHandle {
@@ -31,6 +32,8 @@ interface PreviewPlayerProps {
     aspectClassName?: string;
     aspectStyle?: React.CSSProperties;
     showControls?: boolean;
+    /** Draw the title-safe guides over the picture. Off when the canvas is being recorded, so they are not burned into the export. */
+    showGuides?: boolean;
 }
 
 const interpolate = (start: number, end: number, progress: number, easing: string) => {
@@ -84,29 +87,6 @@ const appendStyleEffectFilters = (base: string, effects: ActiveClipEffect[]) => 
         next = mergeFilterChunk(next, chunk);
     });
     return next;
-};
-
-const fillRoundedRect = (
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    radius: number,
-) => {
-    const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
-    ctx.beginPath();
-    ctx.moveTo(x + safeRadius, y);
-    ctx.lineTo(x + width - safeRadius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
-    ctx.lineTo(x + width, y + height - safeRadius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
-    ctx.lineTo(x + safeRadius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
-    ctx.lineTo(x, y + safeRadius);
-    ctx.quadraticCurveTo(x, y, x + safeRadius, y);
-    ctx.closePath();
-    ctx.fill();
 };
 
 const sampleCanvasLuminance = (
@@ -328,6 +308,7 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
     aspectClassName = 'aspect-video',
     aspectStyle,
     showControls = true,
+    showGuides = true,
 }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -928,113 +909,35 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
                 ctx.restore();
                 ctx.save();
 
-                const { content, font, size, color, position, background, autoContrast } = clip.textConfig;
-                const lines = content.split('\n').map((line) => line.trim()).filter(Boolean);
-                if (lines.length > 0) {
+                const { background, autoContrast } = clip.textConfig;
+                const layout = layoutTitle(ctx, clip.textConfig, canvas.width, canvas.height);
+                if (layout) {
                     const textTransform = clip.transform || { scale: 1, opacity: 1, position: { x: 50, y: 50 } };
                     const textScale = Math.max(0.1, getKeyframeValue(clip.keyframes, 'scale', keyframeTime, textTransform.scale));
                     const textX = getKeyframeValue(clip.keyframes, 'x', keyframeTime, textTransform.position.x);
                     const textY = getKeyframeValue(clip.keyframes, 'y', keyframeTime, textTransform.position.y);
                     const textOpacity = Math.max(0, Math.min(1, getKeyframeValue(clip.keyframes, 'opacity', keyframeTime, textTransform.opacity)));
                     const textBlur = Math.max(0, getKeyframeValue(clip.keyframes, 'textBlur', keyframeTime, 0));
-                    const lineHeight = size * 1.12;
-                    const totalHeight = Math.max(lineHeight, lines.length * lineHeight);
-                    ctx.font = `${size}px ${font}`;
-                    const maxLineWidth = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), size * 0.7);
-                    let baseBlockX = (canvas.width - maxLineWidth) / 2;
-                    let baseBlockY = (canvas.height - totalHeight) / 2;
-
-                    if (position.includes('left')) baseBlockX = canvas.width * 0.08;
-                    if (position.includes('right')) baseBlockX = canvas.width * 0.92 - maxLineWidth;
-                    if (position.includes('top')) baseBlockY = canvas.height * 0.08;
-                    if (position.includes('bottom')) baseBlockY = canvas.height * 0.9 - totalHeight;
 
                     const samplePaddingX = (background?.paddingX ?? 16) + 8;
                     const samplePaddingY = (background?.paddingY ?? 10) + 6;
-                    const sampleWidth = maxLineWidth + samplePaddingX * 2;
-                    const sampleHeight = totalHeight + samplePaddingY * 2;
                     const sampledLuminance = autoContrast ? sampleCanvasLuminance(
                         ctx,
-                        baseBlockX - samplePaddingX,
-                        baseBlockY - samplePaddingY,
-                        sampleWidth,
-                        sampleHeight,
+                        layout.baseBlockX - samplePaddingX,
+                        layout.baseBlockY - samplePaddingY,
+                        layout.maxLineWidth + samplePaddingX * 2,
+                        layout.totalHeight + samplePaddingY * 2,
                     ) : null;
+                    const colors = resolveTitleColors(clip.textConfig, sampledLuminance);
 
-                    const resolvedBackground = background ? { ...background } : undefined;
-                    let resolvedTextColor = color;
-                    let resolvedStroke = 'rgba(2, 6, 23, 0.92)';
-
-                    if (sampledLuminance !== null) {
-                        if (sampledLuminance > 0.58) {
-                            resolvedTextColor = '#0f172a';
-                            resolvedStroke = 'rgba(248, 250, 252, 0.9)';
-                            if (resolvedBackground) {
-                                resolvedBackground.color = '#f8fafc';
-                                resolvedBackground.opacity = Math.max(0.78, resolvedBackground.opacity ?? 0.78);
-                            }
-                        } else {
-                            resolvedTextColor = '#f8fafc';
-                            resolvedStroke = 'rgba(2, 6, 23, 0.96)';
-                            if (resolvedBackground) {
-                                resolvedBackground.color = '#020617';
-                                resolvedBackground.opacity = Math.max(0.72, resolvedBackground.opacity ?? 0.72);
-                            }
-                        }
-                    }
-
-                    const baseCenterX = baseBlockX + maxLineWidth / 2 + ((textX - 50) * canvas.width) / 100;
-                    const baseCenterY = baseBlockY + totalHeight / 2 + ((textY - 50) * canvas.height) / 100;
-                    const localBlockX = -maxLineWidth / 2;
-                    const localBlockY = -totalHeight / 2;
-                    const textXLocal = position.includes('left')
-                        ? localBlockX
-                        : position.includes('right')
-                            ? localBlockX + maxLineWidth
-                            : 0;
+                    const baseCenterX = layout.baseBlockX + layout.maxLineWidth / 2 + ((textX - 50) * canvas.width) / 100;
+                    const baseCenterY = layout.baseBlockY + layout.totalHeight / 2 + ((textY - 50) * canvas.height) / 100;
 
                     ctx.save();
                     ctx.globalAlpha = textOpacity;
                     ctx.translate(baseCenterX, baseCenterY);
                     ctx.scale(textScale, textScale);
-                    ctx.textAlign = position.includes('left') ? 'left' : position.includes('right') ? 'right' : 'center';
-                    ctx.textBaseline = 'top';
-                    ctx.lineWidth = size / 10;
-
-                    if (resolvedBackground && resolvedBackground.enabled !== false) {
-                        const paddingX = resolvedBackground.paddingX ?? 16;
-                        const paddingY = resolvedBackground.paddingY ?? 10;
-                        const radius = resolvedBackground.radius ?? 16;
-                        const boxHeight = totalHeight + paddingY * 2;
-                        const boxWidth = maxLineWidth + paddingX * 2;
-                        let fillX = localBlockX - paddingX;
-                        let fillY = localBlockY - paddingY;
-                        let fillWidth = boxWidth;
-
-                        if (resolvedBackground.style === 'lower-third-bar') {
-                            fillWidth = Math.max(boxWidth, canvas.width * 0.42);
-                            fillX = position.includes('right')
-                                ? localBlockX + maxLineWidth - fillWidth + paddingX
-                                : position.includes('center')
-                                    ? -fillWidth / 2
-                                    : localBlockX - paddingX;
-                        }
-
-                        ctx.save();
-                        ctx.globalAlpha = Math.max(0, Math.min(1, resolvedBackground.opacity ?? 0.72));
-                        ctx.fillStyle = resolvedBackground.color || '#020617';
-                        fillRoundedRect(ctx, fillX, fillY, fillWidth, boxHeight, radius);
-                        ctx.restore();
-                    }
-
-                    ctx.strokeStyle = resolvedStroke;
-                    ctx.fillStyle = resolvedTextColor;
-                    ctx.filter = textBlur > 0.01 ? `blur(${textBlur.toFixed(2)}px)` : 'none';
-                    lines.forEach((line, index) => {
-                        const lineY = localBlockY + index * lineHeight;
-                        ctx.strokeText(line, textXLocal, lineY);
-                        ctx.fillText(line, textXLocal, lineY);
-                    });
+                    drawTitleLocal(ctx, layout, clip.textConfig, colors, canvas.width, textBlur);
                     ctx.restore();
                 }
             }
@@ -1185,7 +1088,7 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
             }
         });
 
-        if (hasActiveTextOverlay) {
+        if (hasActiveTextOverlay && showGuides) {
             drawTitleSafeGuides(ctx, canvas.width, canvas.height);
         }
 
@@ -1226,14 +1129,14 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
     useEffect(() => {
         if (isPlaying) return;
         draw();
-    }, [isPlaying, playheadPosition, timelineClips, mediaItems, canvasWidth, canvasHeight, frameRevision]);
+    }, [isPlaying, playheadPosition, timelineClips, mediaItems, canvasWidth, canvasHeight, frameRevision, showGuides]);
 
     // While paused, redraw periodically so freshly decoded video frames become visible immediately.
     useEffect(() => {
         if (isPlaying) return;
         const id = window.setInterval(() => draw(), 120);
         return () => window.clearInterval(id);
-    }, [isPlaying, timelineClips, mediaItems, canvasWidth, canvasHeight, frameRevision]);
+    }, [isPlaying, timelineClips, mediaItems, canvasWidth, canvasHeight, frameRevision, showGuides]);
 
     const totalDuration = timelineClips.length > 0 ? Math.max(...timelineClips.map(c => c.end)) : 0;
 

@@ -26,6 +26,7 @@ import {
     type OpenColorIOConfigId,
 } from '../utils/openColorIO';
 import { buildVfxHandoffManifest } from '../utils/vfxHandoffManifest';
+import { prepareProjectForHqExport } from '../utils/hqExportPrep';
 import {
     buildNatronPythonScriptFromVfxHandoffManifest,
     buildNukeScriptFromVfxHandoffManifest,
@@ -379,9 +380,14 @@ const ExportWorkspace: React.FC<ExportWorkspaceProps> = ({ mediaItems, timelineC
                     (window as any).electron.project.onExportProgress(handleProgress);
 
                     // Invoke Export
+                    // FFmpeg cannot lay out titles, so draw each one to an image at the export size first.
+                    const exportProject = await prepareProjectForHqExport(
+                        { timelineClips, timelineTracks, mediaItems },
+                        { width: normalizedSettings.width, height: normalizedSettings.height },
+                    );
                     const result = await (window as any).electron.project.exportVideo({
                         folderPath: projectPath,
-                        project: { timelineClips, timelineTracks, mediaItems },
+                        project: exportProject,
                         settings: normalizedSettings
                     });
 
@@ -698,6 +704,7 @@ const ExportWorkspace: React.FC<ExportWorkspaceProps> = ({ mediaItems, timelineC
                                 canvasWidth={renderSettings.width}
                                 canvasHeight={renderSettings.height}
                                 aspectClassName={resolveAspectClassName(renderSettings)}
+                                showGuides={false}
                             />
                             <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
                                 <div className="text-red-500 font-bold animate-pulse">REC</div>

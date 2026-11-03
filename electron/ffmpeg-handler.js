@@ -8,6 +8,7 @@ const { promisify } = require('util');
 const { buildAudioFilterGraph, buildAudioEncodingOptions } = require('./ffmpeg-audio-graph');
 const { buildFfmpegChromaKeyFilter } = require('./ffmpeg-chroma');
 const { buildCompositeFilters, buildLutFilter, resolveBlendMode, serializeCubeLut } = require('./ffmpeg-composite');
+const { decodePngDataUrl, placeTitleClip } = require('./ffmpeg-title');
 const os = require('os');
 
 const execFileAsync = promisify(execFile);
@@ -938,9 +939,15 @@ const buildRenderPlan = ({ folderPath, project }) => {
             continue;
         }
 
+        // A title is drawn by the app into a transparent image (clip.textRaster) and then handled like an image clip.
+        let titleBytes = null;
         if (clip.textConfig) {
-            issues.push(`${clipLabel}: text overlays are not supported in HQ FFmpeg export yet.`);
-            continue;
+            if (clip.textRaster?.empty) continue; // a title with no text draws nothing
+            titleBytes = decodePngDataUrl(clip.textRaster?.data);
+            if (!titleBytes) {
+                issues.push(`${clipLabel}: the title was not drawn for export. Restart the app so it is up to date and try again.`);
+                continue;
+            }
         }
 
         if (clip.transitionOut?.type && Number(clip.transitionOut.duration) > 0) {
@@ -953,8 +960,8 @@ const buildRenderPlan = ({ folderPath, project }) => {
             continue;
         }
 
-        const sourcePath = resolveSourcePath(folderPath, mediaItem);
-        if (!sourcePath || !fs.existsSync(sourcePath)) {
+        const sourcePath = titleBytes ? null : resolveSourcePath(folderPath, mediaItem);
+        if (!titleBytes && (!sourcePath || !fs.existsSync(sourcePath))) {
             issues.push(`${clipLabel}: source file is missing or offline.`);
             continue;
         }
@@ -970,8 +977,9 @@ const buildRenderPlan = ({ folderPath, project }) => {
         const playbackDuration = sourceRange / speed;
 
         visualEntries.push({
-            clip,
-            mediaItem,
+            clip: titleBytes ? placeTitleClip(clip) : clip,
+            mediaItem: titleBytes ? { ...mediaItem, type: 'image' } : mediaItem,
+            titleBytes,
             sourcePath,
             trackIndex: trackIndexMap.get(clip.trackId) ?? 0,
             start,
@@ -1052,7 +1060,10 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
 
         if (mediaItem.type === 'image') {
             cmd.input(sourcePath).inputOptions(['-loop 1', `-t ${formatNumber(visibleDuration, 5)}`]);
-            complexFilter.push(`[${inputIndex}:v]fps=${fps},scale=${width}:${height}:force_original_aspect_ratio=decrease,setsar=1[${currentLabel}]`);
+            const fitFilter = entry.titleBytes
+                ? 'setsar=1'
+                : `scale=${width}:${height}:force_original_aspect_ratio=decrease,setsar=1`;
+            complexFilter.push(`[${inputIndex}:v]fps=${fps},${fitFilter}[${currentLabel}]`);
         } else {
             cmd.input(sourcePath);
             const durationFilters = [];
@@ -1314,6 +1325,13 @@ const renderTimelineInner = async (folderPath, project, settings, onProgress, te
         fs.writeFileSync(lutPath, serializeCubeLut(entry.clip.filters.customLut));
         tempFiles.push(lutPath);
         entry.lutFile = lutPath;
+    });
+    renderPlan.visualEntries.forEach((entry, index) => {
+        if (!entry.titleBytes) return;
+        const titlePath = path.join(os.tmpdir(), `postime-title-${process.pid}-${Date.now()}-${index}.png`);
+        fs.writeFileSync(titlePath, entry.titleBytes);
+        tempFiles.push(titlePath);
+        entry.sourcePath = titlePath;
     });
     await Promise.all(renderPlan.visualEntries.map(async (entry) => {
         if (entry.mediaItem.type === 'video') {
