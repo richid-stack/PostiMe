@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('electron', {
     onExportProgress: (callback) => ipcRenderer.on('export:progress', (_event, value) => callback(value)),
     removeExportProgressListener: () => ipcRenderer.removeAllListeners('export:progress'),
   },
+  capture: {
+    listSources: () => ipcRenderer.invoke('capture:listSources'),
+    selectSource: (id) => ipcRenderer.invoke('capture:selectSource', id),
+  },
   mcp: {
     init: () => ipcRenderer.invoke('mcp:init'),
     listTools: () => ipcRenderer.invoke('mcp:listTools'),

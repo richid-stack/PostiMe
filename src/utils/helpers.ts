@@ -27,11 +27,34 @@ export const getVideoDuration = (fileOrUrl: File | string): Promise<number> => {
     const video = document.createElement('video');
     video.preload = 'metadata';
 
-    video.onloadedmetadata = () => {
+    const finish = (duration: number) => {
       if (isFile) {
         window.URL.revokeObjectURL(url);
       }
-      resolve(video.duration);
+      resolve(duration);
+    };
+
+    video.onloadedmetadata = () => {
+      if (Number.isFinite(video.duration)) {
+        finish(video.duration);
+        return;
+      }
+      // Browser recordings (MediaRecorder WebM) carry no length, so the browser reports Infinity.
+      // Seeking far past the end makes it work the real length out.
+      let settled = false;
+      const check = () => {
+        if (settled || !Number.isFinite(video.duration)) return;
+        settled = true;
+        finish(video.duration);
+      };
+      video.ondurationchange = check;
+      video.ontimeupdate = check;
+      video.currentTime = 1e101;
+      window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        finish(5);
+      }, 8000);
     };
 
     video.onerror = () => {

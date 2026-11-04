@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { MediaItem, RecentProject, ReferenceItem, ShotPrompt, TimelineClip, TimelineTrack } from '../types';
 import { useLibraryAssets, LibraryAsset, LibraryAssetKind } from '../hooks/useLibraryAssets';
-import { UploadIcon, VideoIcon, ImageIcon, AudioIcon, DownloadIcon, BoxIcon, SearchIcon, FolderIcon } from './icons';
+import { UploadIcon, VideoIcon, ImageIcon, AudioIcon, DownloadIcon, BoxIcon, SearchIcon, FolderIcon, RecordIcon } from './icons';
+import RecorderModal from './RecorderModal';
 
 interface MediaBinProps {
   mediaItems: MediaItem[];
@@ -153,6 +154,12 @@ const MediaBin: React.FC<MediaBinProps> = ({
   onImportLibraryAsset,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [recorderOpen, setRecorderOpen] = useState(false);
+  const handleRecorded = (file: File) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    onAddMedia(transfer.files);
+  };
   const [activeView, setActiveView] = useState<'project' | 'library'>('project');
   const [projectSearch, setProjectSearch] = useState('');
   const [projectBin, setProjectBin] = useState<ProjectSmartBinId>('all');
@@ -1009,6 +1016,14 @@ const MediaBin: React.FC<MediaBinProps> = ({
         <UploadIcon className="w-5 h-5" />
         Upload Media
       </button>
+      <button
+        onClick={() => setRecorderOpen(true)}
+        className="mt-2 w-full app-button flex items-center justify-center gap-2"
+      >
+        <RecordIcon className="w-5 h-5" />
+        Record
+      </button>
+      {recorderOpen && <RecorderModal onClose={() => setRecorderOpen(false)} onRecorded={handleRecorded} />}
     </div>
   );
 };

@@ -1,5 +1,6 @@
 
-const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog, desktopCapturer, session } = require('electron');
+const { registerCaptureHandlers } = require('./capture-sources');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
@@ -743,6 +744,7 @@ ipcMain.handle('comfyui:clearLogs', async () => {
 });
 
 app.whenReady().then(() => {
+  registerCaptureHandlers({ ipcMain, session: session.defaultSession, desktopCapturer });
   createWindow();
 
   app.on('activate', () => {

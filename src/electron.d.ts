@@ -29,6 +29,10 @@ declare global {
                 onExportProgress: (callback: (progress: any) => void) => void;
                 removeExportProgressListener: () => void;
             };
+            capture?: {
+                listSources: () => Promise<Array<{ id: string; name: string; kind: 'screen' | 'window'; thumbnail: string | null }>>;
+                selectSource: (id: string) => Promise<boolean>;
+            };
             mcp?: {
                 init: () => Promise<{ ok: boolean; error?: string }>;
                 listTools: () => Promise<any>;

@@ -108,6 +108,11 @@
         ]
       },
       "hardenedRuntime": true,
+      "extendInfo": {
+        "NSCameraUsageDescription": "PostiMe uses the camera when you record a clip.",
+        "NSMicrophoneUsageDescription": "PostiMe uses the microphone when you record a clip or a voiceover.",
+        "NSScreenCaptureUsageDescription": "PostiMe records your screen when you ask it to."
+      },
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist",
       "gatekeeperAssess": false,
