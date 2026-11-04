@@ -188,6 +188,7 @@ const LibraryPanel: React.FC<any> = (props) => {
                         activeTrackId={props.activeTrackId}
                         playheadPosition={props.playheadPosition}
                         onAddMedia={props.onAddMedia}
+                        scriptText={props.scriptText}
                         onAddToTimeline={props.onAddToTimeline}
                         onLoadMediaToSource={props.onLoadMediaToSource}
                         onLoadLibraryAssetToSource={props.onLoadLibraryAssetToSource}

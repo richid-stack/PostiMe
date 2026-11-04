@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MicIcon, RecordIcon, ScreenIcon, VideoIcon } from './icons';
+import TeleprompterOverlay from './TeleprompterOverlay';
+import { clampWpm, DEFAULT_WPM, MAX_WPM, MIN_WPM } from '../utils/teleprompter';
 import {
   buildRecordingFileName,
   formatRecordingTime,
@@ -21,6 +23,8 @@ interface RecorderModalProps {
   onRecordingStart?: (playAlong: boolean) => void;
   /** The take has ended (stopped, or the device went away). */
   onRecordingStop?: () => void;
+  /** The project's script, offered to the teleprompter. */
+  script?: string | null;
 }
 
 type Phase = 'setup' | 'countdown' | 'recording' | 'saving';
@@ -40,9 +44,23 @@ const errorText = (error: unknown): string => {
   return error instanceof Error && error.message ? error.message : 'Recording could not start.';
 };
 
-const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded, variant = 'dialog', onRecordingStart, onRecordingStop }) => {
+const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded, variant = 'dialog', onRecordingStart, onRecordingStop, script }) => {
   const compact = variant === 'voiceover';
   const [playAlong, setPlayAlong] = useState(true);
+  const [prompter, setPrompter] = useState(() => {
+    const fallback = { on: false, text: '', wpm: DEFAULT_WPM, size: 40, mirror: false };
+    try {
+      const saved = JSON.parse(localStorage.getItem('postime.teleprompter') || 'null');
+      return saved && typeof saved === 'object' ? { ...fallback, ...saved, wpm: clampWpm(saved.wpm), on: false } : fallback;
+    } catch {
+      return fallback;
+    }
+  });
+  const [scrollPaused, setScrollPaused] = useState(false);
+  const [promptResetKey, setPromptResetKey] = useState(0);
+  useEffect(() => {
+    try { localStorage.setItem('postime.teleprompter', JSON.stringify({ text: prompter.text, wpm: prompter.wpm, size: prompter.size, mirror: prompter.mirror })); } catch { /* not saved, still works */ }
+  }, [prompter.text, prompter.wpm, prompter.size, prompter.mirror]);
   const [mode, setMode] = useState<RecordMode>(compact ? 'audio' : 'camera');
   const [phase, setPhase] = useState<Phase>('setup');
   const [devices, setDevices] = useState<{ cams: MediaDeviceInfo[]; mics: MediaDeviceInfo[] }>({ cams: [], mics: [] });
@@ -239,6 +257,8 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded, vari
 
   const start = () => {
     setError(null);
+    setScrollPaused(false);
+    setPromptResetKey((k) => k + 1);
     setCountdown(3);
     setPhase('countdown');
   };
@@ -247,6 +267,7 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded, vari
     recorderRef.current?.stop();
   };
 
+  const showPrompter = !compact && mode !== 'screen' && prompter.on && prompter.text.trim().length > 0;
   const busy = phase !== 'setup';
   const showPreview = mode !== 'audio';
   const selectClass = 'w-full text-sm';
@@ -299,6 +320,9 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded, vari
           {!compact && <div className="relative bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center">
             {showPreview && <video ref={videoRef} muted playsInline className="w-full h-full object-contain" data-testid="recorder-preview" />}
             {mode === 'audio' && <MicIcon className="w-14 h-14 text-white/30" />}
+            {showPrompter && (
+              <TeleprompterOverlay text={prompter.text} size={prompter.size} wpm={prompter.wpm} mirror={prompter.mirror} running={phase === 'recording' && !scrollPaused} resetKey={promptResetKey} />
+            )}
             {mode === 'screen' && phase === 'setup' && sources.length === 0 && (
               <p className="absolute text-sm app-muted px-6 text-center">Press Record and choose what to share.</p>
             )}
@@ -312,6 +336,15 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded, vari
               </div>
             )}
           </div>}
+
+          {showPrompter && phase === 'recording' && (
+            <div className="flex items-center justify-center gap-2 text-xs">
+              <button className="app-button" onClick={() => setPrompter((p) => ({ ...p, wpm: clampWpm(p.wpm - 10) }))}>Slower</button>
+              <span className="app-muted w-20 text-center" data-testid="prompter-wpm">{prompter.wpm} wpm</span>
+              <button className="app-button" onClick={() => setPrompter((p) => ({ ...p, wpm: clampWpm(p.wpm + 10) }))}>Faster</button>
+              <button className="app-button" onClick={() => setScrollPaused((v) => !v)}>{scrollPaused ? 'Resume scroll' : 'Pause scroll'}</button>
+            </div>
+          )}
 
           {(mode !== 'screen' || useMic) && (
             <div className="flex items-center gap-3" aria-label="Microphone level">
@@ -355,6 +388,40 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded, vari
                     {devices.mics.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>)}
                   </select>
                 </label>
+              )}
+            </div>
+          )}
+
+          {!compact && mode !== 'screen' && phase === 'setup' && (
+            <div className="app-card p-3 space-y-3">
+              <label className="text-sm font-bold flex items-center gap-2">
+                <input type="checkbox" checked={prompter.on} onChange={(e) => setPrompter((p) => ({ ...p, on: e.target.checked }))} /> Teleprompter
+              </label>
+              {prompter.on && (
+                <div className="space-y-3">
+                  <textarea
+                    className="w-full text-sm"
+                    rows={5}
+                    placeholder="Paste or type what you want to say. It scrolls over the preview while you record, and is not part of the recording."
+                    value={prompter.text}
+                    onChange={(e) => setPrompter((p) => ({ ...p, text: e.target.value }))}
+                    aria-label="Teleprompter script"
+                  />
+                  {script && script.trim() && prompter.text !== script && (
+                    <button className="app-button text-xs" onClick={() => setPrompter((p) => ({ ...p, text: script }))}>Use the project script</button>
+                  )}
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <label className="text-xs app-muted space-y-1 block">Speed: {prompter.wpm} words a minute
+                      <input type="range" className="w-full" min={MIN_WPM} max={MAX_WPM} step={10} value={prompter.wpm} onChange={(e) => setPrompter((p) => ({ ...p, wpm: clampWpm(Number(e.target.value)) }))} aria-label="Teleprompter speed" />
+                    </label>
+                    <label className="text-xs app-muted space-y-1 block">Text size: {prompter.size}px
+                      <input type="range" className="w-full" min={24} max={72} step={4} value={prompter.size} onChange={(e) => setPrompter((p) => ({ ...p, size: Number(e.target.value) }))} aria-label="Teleprompter text size" />
+                    </label>
+                  </div>
+                  <label className="text-xs app-muted flex items-center gap-2">
+                    <input type="checkbox" checked={prompter.mirror} onChange={(e) => setPrompter((p) => ({ ...p, mirror: e.target.checked }))} /> Mirror the text (for a prompter with a mirror glass)
+                  </label>
+                </div>
               )}
             </div>
           )}

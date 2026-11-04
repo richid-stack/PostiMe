@@ -11,6 +11,8 @@ interface MediaBinProps {
   activeTrackId?: string | null;
   playheadPosition?: number;
   onAddMedia: (files: FileList) => void;
+  /** The project's script, offered to the recorder's teleprompter. */
+  scriptText?: string | null;
   onAddToTimeline: (mediaId: string) => void;
   onLoadMediaToSource?: (mediaId: string) => void;
   /** When set, a single click selects (Media page); double-click adds to the timeline. */
@@ -141,6 +143,7 @@ const MediaBin: React.FC<MediaBinProps> = ({
   activeTrackId = null,
   playheadPosition = 0,
   onAddMedia,
+  scriptText,
   onAddToTimeline,
   onLoadMediaToSource,
   onSelectMedia,
@@ -1023,7 +1026,7 @@ const MediaBin: React.FC<MediaBinProps> = ({
         <RecordIcon className="w-5 h-5" />
         Record
       </button>
-      {recorderOpen && <RecorderModal onClose={() => setRecorderOpen(false)} onRecorded={handleRecorded} />}
+      {recorderOpen && <RecorderModal onClose={() => setRecorderOpen(false)} onRecorded={handleRecorded} script={scriptText} />}
     </div>
   );
 };
