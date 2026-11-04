@@ -12,6 +12,15 @@ interface RecorderModalProps {
   onClose: () => void;
   /** Gets the finished recording as a file, like an upload. */
   onRecorded: (file: File) => void;
+  /**
+   * 'dialog' is the full recorder. 'voiceover' is a small panel docked in the corner that records the microphone
+   * only, leaves the editor visible, and can play the timeline while recording.
+   */
+  variant?: 'dialog' | 'voiceover';
+  /** The take has begun (after the countdown). `playAlong` is the voiceover "play the video" choice. */
+  onRecordingStart?: (playAlong: boolean) => void;
+  /** The take has ended (stopped, or the device went away). */
+  onRecordingStop?: () => void;
 }
 
 type Phase = 'setup' | 'countdown' | 'recording' | 'saving';
@@ -31,8 +40,10 @@ const errorText = (error: unknown): string => {
   return error instanceof Error && error.message ? error.message : 'Recording could not start.';
 };
 
-const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded }) => {
-  const [mode, setMode] = useState<RecordMode>('camera');
+const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded, variant = 'dialog', onRecordingStart, onRecordingStop }) => {
+  const compact = variant === 'voiceover';
+  const [playAlong, setPlayAlong] = useState(true);
+  const [mode, setMode] = useState<RecordMode>(compact ? 'audio' : 'camera');
   const [phase, setPhase] = useState<Phase>('setup');
   const [devices, setDevices] = useState<{ cams: MediaDeviceInfo[]; mics: MediaDeviceInfo[] }>({ cams: [], mics: [] });
   const [cameraId, setCameraId] = useState('');
@@ -56,6 +67,9 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded }) =>
   const startedAtRef = useRef(0);
   const mimeRef = useRef('');
   const cancelledRef = useRef(false);
+  // the latest callbacks, so a parent re-render never restarts the countdown
+  const callbacksRef = useRef({ onRecorded, onRecordingStart, onRecordingStop, onClose });
+  callbacksRef.current = { onRecorded, onRecordingStart, onRecordingStop, onClose };
 
   const stopStream = useCallback(() => {
     cancelAnimationFrame(meterFrameRef.current);
@@ -182,6 +196,7 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded }) =>
         const type = recorder.mimeType || mimeRef.current || (mode === 'audio' ? 'audio/webm' : 'video/webm');
         const blob = new Blob(chunksRef.current, { type });
         stopStream();
+        if (!cancelledRef.current) callbacksRef.current.onRecordingStop?.();
         if (cancelledRef.current) return;
         if (blob.size === 0) {
           setError('Nothing was recorded.');
@@ -189,29 +204,32 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded }) =>
           setPreviewKey((k) => k + 1);
           return;
         }
-        onRecorded(new File([blob], buildRecordingFileName(mode, type, new Date()), { type, lastModified: Date.now() }));
-        onClose();
+        callbacksRef.current.onRecorded(new File([blob], buildRecordingFileName(mode, type, new Date()), { type, lastModified: Date.now() }));
+        callbacksRef.current.onClose();
       };
       recorderRef.current = recorder;
       recorder.start(1000);
       startedAtRef.current = performance.now();
       setElapsed(0);
       setPhase('recording');
+      callbacksRef.current.onRecordingStart?.(playAlong);
     } catch (e) {
       stopStream();
       setError(errorText(e));
       setPhase('setup');
       setPreviewKey((k) => k + 1);
     }
-  }, [mode, openStream, startMeter, stopStream, onRecorded, onClose]);
+  }, [mode, openStream, startMeter, stopStream, playAlong]);
+  const beginRecordingRef = useRef(beginRecording);
+  beginRecordingRef.current = beginRecording;
 
   // 3, 2, 1 then go
   useEffect(() => {
     if (phase !== 'countdown') return undefined;
-    if (countdown <= 0) { beginRecording(); return undefined; }
+    if (countdown <= 0) { beginRecordingRef.current(); return undefined; }
     const timer = window.setTimeout(() => setCountdown((n) => n - 1), 1000);
     return () => window.clearTimeout(timer);
-  }, [phase, countdown, beginRecording]);
+  }, [phase, countdown]);
 
   useEffect(() => {
     if (phase !== 'recording') return undefined;
@@ -234,18 +252,22 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded }) =>
   const selectClass = 'w-full text-sm';
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80]" role="dialog" aria-label="Record">
-      <div className="app-modal w-full max-w-2xl flex flex-col overflow-hidden">
+    <div
+      className={compact ? 'fixed bottom-6 right-6 z-[80] w-[22rem]' : 'fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80]'}
+      role="dialog"
+      aria-label={compact ? 'Record voiceover' : 'Record'}
+    >
+      <div className={`app-modal w-full flex flex-col overflow-hidden ${compact ? 'shadow-2xl' : 'max-w-2xl'}`}>
         <header className="flex justify-between items-center p-5 app-modal-header">
           <div>
-            <h2 className="text-lg font-bold">Record</h2>
-            <p className="text-xs app-muted">The recording is added to your media bin when you stop.</p>
+            <h2 className="text-lg font-bold">{compact ? 'Record voiceover' : 'Record'}</h2>
+            <p className="text-xs app-muted">{compact ? 'It lands on an audio track at the playhead.' : 'The recording is added to your media bin when you stop.'}</p>
           </div>
           <button onClick={() => { if (!busy || phase === 'countdown') { stopStream(); onClose(); } }} disabled={phase === 'recording' || phase === 'saving'} className="app-muted hover:text-white disabled:opacity-30" aria-label="Close">&times;</button>
         </header>
 
         <div className="p-5 space-y-4">
-          <div className="grid grid-cols-3 gap-2" role="tablist">
+          {!compact && <div className="grid grid-cols-3 gap-2" role="tablist">
             {MODES.map(({ id, label, hint, Icon }) => (
               <button
                 key={id}
@@ -261,9 +283,20 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded }) =>
                 <div className="text-[11px] app-muted leading-snug">{hint}</div>
               </button>
             ))}
-          </div>
+          </div>}
 
-          <div className="relative bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center">
+          {compact && (phase === 'countdown' || phase === 'recording' || phase === 'saving') && (
+            <div className="flex items-center justify-center gap-3 bg-black rounded-xl py-4 text-lg font-bold" aria-live="assertive">
+              {phase === 'countdown' ? <span>Starting in {countdown}</span> : (
+                <>
+                  <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                  <span className="font-mono" data-testid="recorder-time">{formatRecordingTime(elapsed)}</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {!compact && <div className="relative bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center">
             {showPreview && <video ref={videoRef} muted playsInline className="w-full h-full object-contain" data-testid="recorder-preview" />}
             {mode === 'audio' && <MicIcon className="w-14 h-14 text-white/30" />}
             {mode === 'screen' && phase === 'setup' && sources.length === 0 && (
@@ -278,7 +311,7 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded }) =>
                 <span data-testid="recorder-time">{formatRecordingTime(elapsed)}</span>
               </div>
             )}
-          </div>
+          </div>}
 
           {(mode !== 'screen' || useMic) && (
             <div className="flex items-center gap-3" aria-label="Microphone level">
@@ -324,6 +357,13 @@ const RecorderModal: React.FC<RecorderModalProps> = ({ onClose, onRecorded }) =>
                 </label>
               )}
             </div>
+          )}
+
+          {compact && phase === 'setup' && (
+            <label className="text-xs app-muted flex items-start gap-2">
+              <input type="checkbox" className="mt-0.5" checked={playAlong} onChange={(e) => setPlayAlong(e.target.checked)} />
+              <span>Play the video while I record. Wear headphones so the sound does not leak into the microphone.</span>
+            </label>
           )}
 
           {error && <p role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-400/30 rounded-lg px-3 py-2">{error}</p>}

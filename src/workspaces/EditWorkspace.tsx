@@ -30,7 +30,8 @@ import ImageEditorModal from '../components/ImageEditorModal';
 import EditorAgentPanel from '../components/EditorAgentPanel';
 import TitlesPanel, { TitlePreset } from '../components/TitlesPanel';
 import type { SubtitleCue } from '../utils/subtitleFormats';
-import { ChevronLeftIcon, ChevronRightIcon, BrushIcon, MaximizeIcon, KeyboardIcon, PaletteIcon, FilmIcon, TextIcon, EffectsIcon, TransitionsIcon, MusicNoteIcon, ScissorsIcon, BrainIcon } from '../components/icons';
+import RecorderModal from '../components/RecorderModal';
+import { MicIcon, ChevronLeftIcon, ChevronRightIcon, BrushIcon, MaximizeIcon, KeyboardIcon, PaletteIcon, FilmIcon, TextIcon, EffectsIcon, TransitionsIcon, MusicNoteIcon, ScissorsIcon, BrainIcon } from '../components/icons';
 import EditTransportBar from '../components/EditTransportBar';
 import { formatTimecode, DEFAULT_TIMELINE_FPS } from '../utils/timecode';
 import AutoCutPanel from '../components/AutoCutPanel';
@@ -143,6 +144,8 @@ interface EditWorkspaceProps {
     onSplitSubtitleClip: (clipId: string) => void;
     onMergeSubtitleClip: (clipId: string, direction: 'previous' | 'next') => void;
     onImportSubtitleCues: (cues: SubtitleCue[], fileName: string) => { count: number };
+    /** A finished voiceover take, to be laid on an audio track starting at `startTime` seconds. */
+    onRecordVoiceover?: (file: File, startTime: number) => void | Promise<void>;
     onSetCaptionStyle: (groupId: string, style: NonNullable<TimelineClip['textConfig']>['captionStyle']) => void;
 }
 
@@ -583,6 +586,11 @@ const EditWorkspace: React.FC<EditWorkspaceProps> = (props) => {
     const [panelWidths, setPanelWidths] = useState(getInitWidths);
     const [collapsed, setCollapsed] = useState(getInitCollapse);
     const [imageEditorOpen, setImageEditorOpen] = useState(false);
+    const [voiceoverOpen, setVoiceoverOpen] = useState(false);
+    const voiceoverStartRef = useRef(0);
+    const voiceoverStartedPlayback = useRef(false);
+    const latestVoiceoverProps = useRef(props);
+    latestVoiceoverProps.current = props;
     const [preview, setPreview] = useState({ presetId: '16:9', width: 1280, height: 720 });
     const [customRatio, setCustomRatio] = useState('2.35:1');
     const [tlHeight, setTlHeight] = useState(getInitTL);
@@ -1443,12 +1451,21 @@ const EditWorkspace: React.FC<EditWorkspaceProps> = (props) => {
                 onMarkIn={markPgmIn}
                 onMarkOut={markPgmOut}
                 onClearMarks={() => { setPgmIn(null); setPgmOut(null); }}
-                trailing={effective !== 'split' && effective !== 'source' && srcSource ? (
+                trailing={(
                     <div className="edit-transport__actions">
-                        <button onClick={() => do3PE('insert')} className="edit-text-btn edit-text-btn--primary" title="Insert the source range at the playhead">Insert</button>
-                        <button onClick={() => do3PE('overwrite')} className="edit-text-btn edit-text-btn--outline" title="Overwrite at the playhead with the source range">Overwrite</button>
+                        {props.onRecordVoiceover && (
+                            <button onClick={() => setVoiceoverOpen(true)} className="edit-text-btn edit-text-btn--outline" title="Record a voiceover at the playhead" aria-label="Record voiceover">
+                                <MicIcon className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" />Voiceover
+                            </button>
+                        )}
+                        {effective !== 'split' && effective !== 'source' && srcSource ? (
+                            <>
+                                <button onClick={() => do3PE('insert')} className="edit-text-btn edit-text-btn--primary" title="Insert the source range at the playhead">Insert</button>
+                                <button onClick={() => do3PE('overwrite')} className="edit-text-btn edit-text-btn--outline" title="Overwrite at the playhead with the source range">Overwrite</button>
+                            </>
+                        ) : null}
                     </div>
-                ) : null}
+                )}
             />
         </div>
     );
@@ -1586,6 +1603,26 @@ const EditWorkspace: React.FC<EditWorkspaceProps> = (props) => {
             {!collapsed.right && <div style={{ flexBasis: `${panelWidths[2]}%`, minWidth: '17rem' }} className="edit-side-panel h-full"><InspectorPanel {...props} /></div>}
 
             <ImageEditorModal isOpen={imageEditorOpen} mediaItem={props.selectedMedia} onClose={() => setImageEditorOpen(false)} onSave={handleImageSave} />
+
+            {voiceoverOpen && (
+                <RecorderModal
+                    variant="voiceover"
+                    onClose={() => setVoiceoverOpen(false)}
+                    onRecordingStart={(playAlong) => {
+                        voiceoverStartRef.current = latestVoiceoverProps.current.playheadPosition;
+                        voiceoverStartedPlayback.current = false;
+                        if (playAlong && !latestVoiceoverProps.current.isPlaying) {
+                            voiceoverStartedPlayback.current = true;
+                            latestVoiceoverProps.current.onTogglePlayback();
+                        }
+                    }}
+                    onRecordingStop={() => {
+                        if (voiceoverStartedPlayback.current && latestVoiceoverProps.current.isPlaying) latestVoiceoverProps.current.onTogglePlayback();
+                        voiceoverStartedPlayback.current = false;
+                    }}
+                    onRecorded={(file) => { void props.onRecordVoiceover?.(file, voiceoverStartRef.current); }}
+                />
+            )}
 
             {/* Keyboard shortcuts overlay */}
             {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}

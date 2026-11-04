@@ -1,4 +1,5 @@
 
+import { pickVoiceoverTrack } from './utils/voiceoverPlacement';
 import { DEFAULT_CHROMA_KEY } from './utils/chromaKey';
 import { FAL_VIDEO_CATALOG } from './services/falVideoCatalog';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -3883,7 +3884,7 @@ function App() {
         return pickTimelineTrack(trackType);
     };
 
-    const handleAddMedia = async (files: FileList) => {
+    const handleAddMedia = async (files: FileList): Promise<MediaItem[]> => {
         const newItems: MediaItem[] = [];
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -3944,6 +3945,29 @@ function App() {
             registerMediaFile(mediaId, file);
         }
         setMediaItems(prev => [...prev, ...newItems]);
+        return newItems;
+    };
+
+    /**
+     * A finished voiceover take: add it to the media bin and lay it on an audio track at `startTime`.
+     * It goes on the first unlocked audio track that is free for its whole length, else on a new audio track,
+     * so it never lands on top of existing audio.
+     */
+    const handleRecordVoiceover = async (file: File, startTime: number) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        const [media] = await handleAddMedia(transfer.files);
+        if (!media) return;
+        const length = Math.max(MIN_TIMELINE_CLIP_DURATION, media.duration || 1);
+        const start = Math.max(0, startTime);
+        const track = pickVoiceoverTrack(timelineTracks, timelineClips, start, length);
+        if (track) {
+            appendMediaToTimeline(media, { track, startTime: start });
+            return;
+        }
+        const newTrack = createTimelineTrack('audio', timelineTracks);
+        setTimelineTracks((prev) => [...prev, newTrack]);
+        appendMediaToTimeline(media, { track: newTrack, startTime: start });
     };
 
     const handleImportTimelineOtio = async (file: File, mode: OpenTimelineIOImportMode = 'replace') => {
@@ -3976,8 +4000,8 @@ function App() {
         return `${applied.summary}${warningText}`;
     };
 
-    const appendMediaToTimeline = (media: MediaItem, placement?: { trackId?: string; startTime?: number; sourceIn?: number; sourceOut?: number }) => {
-        const track = resolveTimelineTrackForMedia(media, placement?.trackId);
+    const appendMediaToTimeline = (media: MediaItem, placement?: { trackId?: string; track?: TimelineTrack; startTime?: number; sourceIn?: number; sourceOut?: number }) => {
+        const track = placement?.track ?? resolveTimelineTrackForMedia(media, placement?.trackId);
         if (!track) {
             if (!placement?.trackId) {
                 const trackType = getTrackTypeForMedia(media);
@@ -7584,6 +7608,7 @@ function App() {
             waveformCache,
             trimMode: editTrimMode,
             onAddMedia: handleAddMedia,
+            onRecordVoiceover: handleRecordVoiceover,
             onAddToTimeline: handleAddToTimeline,
             onImportLibraryAsset: handleImportLibraryAsset,
             onDropLibraryAsset: handleDropLibraryAsset,
