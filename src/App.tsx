@@ -115,6 +115,7 @@ import NotebookLMWorkspace from './workspaces/NotebookLMWorkspace';
 import MicrodramaWorkspace from './workspaces/MicrodramaWorkspace';
 import PluginsWorkspace from './workspaces/PluginsWorkspace';
 import PostPageBar, { POST_PAGES, isPostPage } from './components/PostPageBar';
+import CommandPalette, { type PaletteCommand } from './components/CommandPalette';
 import PricingScreen from './components/PricingScreen';
 import OptionsModal, { EstimateResult, OptionsModalConfig, PricingResult } from './components/OptionsModal';
 import AuthScreen from './components/AuthScreen';
@@ -872,6 +873,7 @@ function App() {
     const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
     const [showAbout, setShowAbout] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [paletteOpen, setPaletteOpen] = useState(false);
     const [showPricing, setShowPricing] = useState(false);
     const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
 
@@ -7550,7 +7552,11 @@ function App() {
             const target = event.target as HTMLElement | null;
             const isTyping = Boolean(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
             if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
-            if (event.key === '\\' && !isTyping) {
+            if (event.key.toLowerCase() === 'k' && !event.shiftKey) {
+                // works even while typing, like in every editor with a palette
+                event.preventDefault();
+                setPaletteOpen((open) => !open);
+            } else if (event.key === '\\' && !isTyping) {
                 event.preventDefault();
                 setSidebarCollapsed((value) => !value);
             } else if (event.shiftKey && !isTyping && /^[1-8]$/.test(event.key)) {
@@ -8832,6 +8838,29 @@ function App() {
         showReview: isDirector,
         showRequests: !isDirector,
     });
+    const paletteCommands: PaletteCommand[] = [
+        ...workspaceNav.items.map((item): PaletteCommand => ({
+            id: `go-${item.id}`,
+            title: item.name,
+            hint: item.description,
+            group: 'Go to',
+            icon: item.icon,
+            run: () => setActiveWorkspace(item.id),
+        })),
+        { id: 'open-settings', title: 'Open settings', hint: 'Accent colour, theme, keys and more', group: 'App', shortcut: '⌘,', keywords: ['preferences', 'accent', 'theme', 'api key'], run: () => setShowSettings(true) },
+        { id: 'toggle-sidebar', title: 'Show or hide the sidebar', group: 'App', shortcut: '⌘\\', run: () => setSidebarCollapsed((value) => !value) },
+        { id: 'toggle-activity', title: 'Show or hide activity', hint: 'Running tasks and agent approvals', group: 'App', keywords: ['tasks', 'agent'], run: () => setActivityDrawerOpen((value) => !value) },
+        ...(Object.keys(UI_MODE_META) as UIMode[])
+            .filter((mode) => mode !== uiMode)
+            .map((mode): PaletteCommand => ({
+                id: `mode-${mode}`,
+                title: `Switch to ${UI_MODE_META[mode].label} mode`,
+                hint: UI_MODE_META[mode].description,
+                group: 'App',
+                keywords: ['layout', 'interface'],
+                run: () => setUiMode(mode),
+            })),
+    ];
     const agentStatusMeta = STUDIO_AGENT_STATUS_STYLES[studioAgentState.status];
     const onlineCount = realtimePresence.length;
     const taskSummary = summarizeTasks(taskCenterTasks);
@@ -9122,6 +9151,10 @@ function App() {
                 uiMode={uiMode}
                 onSelectUIMode={setUiMode}
             />
+
+            {(!showOnboarding && paletteOpen) && (
+                <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
+            )}
 
             {(!showOnboarding && showSettings) && (
                 <ApiKeyModal
