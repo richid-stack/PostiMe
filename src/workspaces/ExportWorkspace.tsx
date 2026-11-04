@@ -27,6 +27,7 @@ import {
 } from '../utils/openColorIO';
 import { buildVfxHandoffManifest } from '../utils/vfxHandoffManifest';
 import { prepareProjectForHqExport } from '../utils/hqExportPrep';
+import MultiSizeExport from '../components/MultiSizeExport';
 import {
     buildNatronPythonScriptFromVfxHandoffManifest,
     buildNukeScriptFromVfxHandoffManifest,
@@ -800,6 +801,15 @@ const ExportWorkspace: React.FC<ExportWorkspaceProps> = ({ mediaItems, timelineC
                 <section className={`app-panel p-8 text-center ${status === 'RENDERING' ? 'min-h-[70vh] flex items-center justify-center' : ''}`}>
                     {renderContent()}
                 </section>
+                {status === 'IDLE' && (
+                    <MultiSizeExport
+                        baseSettings={normalizeExportSettings({ ...settings, useFfmpeg: true })}
+                        projectPath={projectPath}
+                        mediaItems={mediaItems}
+                        timelineClips={timelineClips}
+                        timelineTracks={timelineTracks}
+                    />
+                )}
             </div>
         </div>
     );

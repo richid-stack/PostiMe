@@ -17,6 +17,7 @@ const {
     isSupportedTransition,
 } = require('./ffmpeg-transition');
 const os = require('os');
+const { buildFitFilter, normalizeReframe } = require('./ffmpeg-reframe');
 
 const execFileAsync = promisify(execFile);
 const ffmpegBinaryPath = ffmpegStatic ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : 'ffmpeg';
@@ -1028,7 +1029,7 @@ const buildRenderPlan = ({ folderPath, project }) => {
     };
 };
 
-const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, encoderConfig, outputSettings, bitrateKbps }) => {
+const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, encoderConfig, outputSettings, bitrateKbps, reframe }) => {
     const cmd = ffmpeg();
     const complexFilter = [
         `color=c=black:s=${width}x${height}:r=${fps}:d=${formatNumber(renderPlan.totalDuration, 5)}[canvas0]`,
@@ -1104,7 +1105,7 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
             cmd.input(sourcePath).inputOptions(['-loop 1', `-t ${formatNumber(visibleDuration, 5)}`]);
             const fitFilter = entry.titleBytes
                 ? 'setsar=1'
-                : `scale=${width}:${height}:force_original_aspect_ratio=decrease,setsar=1`;
+                : buildFitFilter({ width, height, reframe, clip });
             complexFilter.push(`[${inputIndex}:v]fps=${fps},${fitFilter}[${currentLabel}]`);
         } else {
             cmd.input(sourcePath);
@@ -1122,7 +1123,7 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
                 + `setpts=(PTS-STARTPTS)/${formatNumber(speed, 5)},`
                 + `fps=${fps},`
                 + `${durationFilters.length > 0 ? `${durationFilters.join(',')},` : ''}`
-                + `scale=${width}:${height}:force_original_aspect_ratio=decrease,setsar=1[${currentLabel}]`,
+                + `${buildFitFilter({ width, height, reframe, clip })}[${currentLabel}]`,
             );
         }
 
@@ -1453,6 +1454,7 @@ const renderTimelineInner = async (folderPath, project, settings, onProgress, te
             encoderConfig: activeEncoder,
             outputSettings,
             bitrateKbps,
+            reframe: normalizeReframe(settings?.reframe),
         });
         await runFfmpegCommand(
             cmd,
@@ -1494,6 +1496,7 @@ const renderTimelineInner = async (folderPath, project, settings, onProgress, te
             encoderConfig: activeEncoder,
             outputSettings,
             bitrateKbps,
+            reframe: normalizeReframe(settings?.reframe),
         });
         await runFfmpegCommand(styleCmd, onProgress, { start: 65, end: 100 }, { stage: 'style', encoder: activeEncoder.label, format: describeOutputFormat(outputSettings, activeEncoder) });
     };

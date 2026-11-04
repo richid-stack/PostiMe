@@ -224,3 +224,47 @@ test('HQ export renders transitions between clips', { skip: !ffmpegPath && 'no F
     await assert.rejects(render('Star Wipe'), /Star Wipe/);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('HQ export fills a vertical frame from a wide picture, around the chosen focus, and leaves small overlays alone', { skip: !ffmpegPath && 'no FFmpeg binary' }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'postime-hq-reframe-'));
+    // left half red, right half blue, with a white square in the middle
+    run(['-f', 'lavfi', '-i', 'color=c=0xff0000:s=320x180:r=30:d=2,drawbox=x=160:y=0:w=160:h=180:color=0x0000ff:t=fill', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(dir, 'wide.mp4')]);
+    run(['-f', 'lavfi', '-i', 'color=c=0x00ff00:s=160x90:r=30:d=2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(dir, 'logo.mp4')]);
+    const { renderTimeline } = require('./ffmpeg-handler.js');
+    const mediaItems = [{ id: 'wide', type: 'video', path: 'wide.mp4' }, { id: 'logo', type: 'video', path: 'logo.mp4' }];
+    const timelineTracks = [{ id: 'v1', type: 'video', isMuted: false }, { id: 'v2', type: 'video', isMuted: false }];
+    const base = { speed: 1, sourceIn: 0, sourceOut: 2, start: 0, end: 2, duration: 2, effect: null, volume: 0 };
+    const render = (reframe, withLogo, name) => renderTimeline(dir, {
+        mediaItems,
+        timelineTracks,
+        timelineClips: [
+            { id: 'w', mediaId: 'wide', trackId: 'v1', ...base },
+            ...(withLogo ? [{ id: 'l', mediaId: 'logo', trackId: 'v2', ...base, transform: { scale: 0.5, opacity: 1, position: { x: 50, y: 20 } } }] : []),
+        ],
+    }, { width: 180, height: 320, fps: 30, bitrateKbps: 2000, videoCodec: 'h264', container: 'mp4', filename: name, gpuAcceleration: 'off', reframe });
+    const at = (file, x, y) => pixelAt(file, 0.5, x, y, 180, 320);
+    const is = (px, expected, label) => px.forEach((value, i) => assert.ok(Math.abs(value - expected[i]) <= 14, `${label}: expected ${expected}, got ${px}`));
+
+    const fit = await render({ mode: 'fit' }, false, 'fit.mp4');
+    is(at(fit, 90, 10), [0, 0, 0], 'fit leaves a bar at the top');
+    is(at(fit, 90, 310), [0, 0, 0], 'fit leaves a bar at the bottom');
+
+    const left = await render({ mode: 'fill', focusX: 0, focusY: 0.5 }, false, 'left.mp4');
+    is(at(left, 90, 10), [255, 0, 0], 'fill covers the top, focused left');
+    is(at(left, 90, 310), [255, 0, 0], 'fill covers the bottom, focused left');
+    is(at(left, 170, 160), [255, 0, 0], 'only the left part of the picture is shown');
+
+    const right = await render({ mode: 'fill', focusX: 1, focusY: 0.5 }, false, 'right.mp4');
+    is(at(right, 90, 160), [0, 0, 255], 'focused right shows the blue half');
+
+    const centre = await render({ mode: 'fill', focusX: 0.5, focusY: 0.5 }, false, 'centre.mp4');
+    is(at(centre, 10, 160), [255, 0, 0], 'centred: red on the left');
+    is(at(centre, 170, 160), [0, 0, 255], 'centred: blue on the right');
+
+    // a small overlay is not cropped: the whole green logo (half the frame width) is still a green block
+    const withLogo = await render({ mode: 'fill', focusX: 0, focusY: 0.5 }, true, 'logo.mp4');
+    is(at(withLogo, 90, 64), [0, 255, 0], 'logo centre');
+    is(at(withLogo, 50, 64), [0, 255, 0], 'logo left part is still there');
+    is(at(withLogo, 90, 120), [255, 0, 0], 'below the logo the filled picture shows');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
