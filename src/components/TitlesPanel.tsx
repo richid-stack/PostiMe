@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MediaItem, TimelineClip, TitleMotionPreset } from '../types';
 import { TextIcon, CheckCircleIcon, ScissorsIcon } from './icons';
+import { cuesFromClips, formatSrt, formatVtt, parseSubtitles, type SubtitleCue } from '../utils/subtitleFormats';
 
 export type TitlePreset = {
   id: string;
@@ -40,6 +41,7 @@ interface TitlesPanelProps {
   onUpdateSubtitleClipContent: (clipId: string, content: string) => void;
   onSplitSubtitleClip: (clipId: string) => void;
   onMergeSubtitleClip: (clipId: string, direction: 'previous' | 'next') => void;
+  onImportSubtitleCues: (cues: SubtitleCue[], fileName: string) => { count: number };
   onSelectClip: (clipId: string | null) => void;
 }
 
@@ -324,6 +326,7 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
   onUpdateSubtitleClipContent,
   onSplitSubtitleClip,
   onMergeSubtitleClip,
+  onImportSubtitleCues,
   onSelectClip,
 }) => {
   const reviewFindings = useMemo(() => buildTitleReview(timelineClips, mediaItems), [mediaItems, timelineClips]);
@@ -354,6 +357,38 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
     });
     setTranscriptDrafts(nextDrafts);
   }, [activeSubtitleGroup]);
+
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [fileStatus, setFileStatus] = useState<{ state: 'idle' | 'done' | 'error'; message: string }>({ state: 'idle', message: '' });
+  const subtitleCues = useMemo(() => cuesFromClips(timelineClips), [timelineClips]);
+
+  const handleExportSubtitles = (format: 'srt' | 'vtt') => {
+    const text = format === 'srt' ? formatSrt(subtitleCues) : formatVtt(subtitleCues);
+    const blob = new Blob([text], { type: format === 'srt' ? 'application/x-subrip' : 'text/vtt' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `subtitles.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setFileStatus({ state: 'done', message: `Saved ${subtitleCues.length} subtitle${subtitleCues.length === 1 ? '' : 's'} as .${format}.` });
+  };
+
+  const handleImportSubtitles = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const cues = parseSubtitles(await file.text());
+      if (cues.length === 0) throw new Error(`No subtitles were found in ${file.name}. It should be an .srt or .vtt file.`);
+      const result = onImportSubtitleCues(cues, file.name);
+      setFileStatus({ state: 'done', message: `Added ${result.count} subtitle clip${result.count === 1 ? '' : 's'} from ${file.name}.` });
+    } catch (error) {
+      setFileStatus({ state: 'error', message: error instanceof Error ? error.message : 'Could not read that subtitle file.' });
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
 
   const handleGenerateSubtitles = async () => {
     setSubtitleStatus({ state: 'running', message: 'Transcribing selected clip...' });
@@ -529,6 +564,30 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
                   <summary>Transcript</summary>
                   <div className="pk-details__body"><p className="pk-body">{subtitleStatus.transcript}</p></div>
                 </details>
+              )}
+            </div>
+
+            <div className="pk-card">
+              <div className="pk-card__head">
+                <span className="pk-card__title">Subtitle files</span>
+                <span className="pk-chip">{subtitleCues.length} on timeline</span>
+              </div>
+              <p className="pk-hint">Bring in an .srt or .vtt file, or save the subtitles on your timeline for YouTube, social apps and players.</p>
+              <div className="pk-actions">
+                <button type="button" className="edit-text-btn" onClick={() => importInputRef.current?.click()}>Import .srt / .vtt</button>
+                <button type="button" className="edit-text-btn" onClick={() => handleExportSubtitles('srt')} disabled={subtitleCues.length === 0}>Export .srt</button>
+                <button type="button" className="edit-text-btn" onClick={() => handleExportSubtitles('vtt')} disabled={subtitleCues.length === 0}>Export .vtt</button>
+              </div>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".srt,.vtt,text/vtt,application/x-subrip"
+                className="hidden"
+                aria-label="Subtitle file to import"
+                onChange={(event) => void handleImportSubtitles(event.target.files?.[0])}
+              />
+              {fileStatus.message && (
+                <div className={`pk-alert ${fileStatus.state === 'error' ? 'pk-alert--danger' : 'pk-alert--ok'}`}>{fileStatus.message}</div>
               )}
             </div>
 

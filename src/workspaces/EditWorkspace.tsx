@@ -29,6 +29,7 @@ import TransitionsPanel from '../components/TransitionsPanel';
 import ImageEditorModal from '../components/ImageEditorModal';
 import EditorAgentPanel from '../components/EditorAgentPanel';
 import TitlesPanel, { TitlePreset } from '../components/TitlesPanel';
+import type { SubtitleCue } from '../utils/subtitleFormats';
 import { ChevronLeftIcon, ChevronRightIcon, BrushIcon, MaximizeIcon, KeyboardIcon, PaletteIcon, FilmIcon, TextIcon, EffectsIcon, TransitionsIcon, MusicNoteIcon, ScissorsIcon, BrainIcon } from '../components/icons';
 import EditTransportBar from '../components/EditTransportBar';
 import { formatTimecode, DEFAULT_TIMELINE_FPS } from '../utils/timecode';
@@ -141,6 +142,7 @@ interface EditWorkspaceProps {
     onUpdateSubtitleClipContent: (clipId: string, content: string) => void;
     onSplitSubtitleClip: (clipId: string) => void;
     onMergeSubtitleClip: (clipId: string, direction: 'previous' | 'next') => void;
+    onImportSubtitleCues: (cues: SubtitleCue[], fileName: string) => { count: number };
 }
 
 /* ─── Sub-panels ─── */
@@ -211,6 +213,7 @@ const LibraryPanel: React.FC<any> = (props) => {
                         onUpdateSubtitleClipContent={props.onUpdateSubtitleClipContent}
                         onSplitSubtitleClip={props.onSplitSubtitleClip}
                         onMergeSubtitleClip={props.onMergeSubtitleClip}
+                        onImportSubtitleCues={props.onImportSubtitleCues}
                         onSelectClip={props.onSelectClip}
                     />
                 );
@@ -1465,6 +1468,7 @@ const EditWorkspace: React.FC<EditWorkspaceProps> = (props) => {
                         onUpdateSubtitleClipContent={props.onUpdateSubtitleClipContent}
                         onSplitSubtitleClip={props.onSplitSubtitleClip}
                         onMergeSubtitleClip={props.onMergeSubtitleClip}
+                        onImportSubtitleCues={props.onImportSubtitleCues}
                         onLoadMediaToSource={loadMediaToSource}
                         onLoadLibraryAssetToSource={loadLibraryAssetToSource}
                         sourcePreviewFrame={sourcePreviewFrame}

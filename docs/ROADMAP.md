@@ -63,7 +63,7 @@ Capture, caption, brand, size, ship.
 | Teleprompter | Not found | | N | M | M | S |
 | Voiceover and ADR recording on the timeline | Not found | M | M | N | N | M |
 | Animated word-by-word captions with styles | Partial: word timings exist on clips, no styles | N | N | M | M | M |
-| SRT and VTT import and export, plus translation | Not found | M | M | M | N | S |
+| SRT and VTT import and export | **Built** (4 Nov 2026): import and export. **Not built:** translation | Titles panel, Subtitles tab. Import reads .srt and .vtt (byte order marks, Windows line endings, WebVTT headers and notes, tags, positioning settings) and lays editable subtitle clips on the timeline at the times in the file. Export writes the timeline's subtitle clips as .srt or .vtt. Checked in a real browser, and round trips keep timing to the millisecond. Imported words are spread evenly across each cue, since a subtitle file has no word timing. | M | M | M | N | S |
 | Brand kit (fonts, colours, logos) applied to titles and captions | Not found | | N | M | N | M |
 | One master to many sizes (9:16, 1:1, 16:9) | Partial: AI reframe via Luma Ray 2 in Compositing; no one-click batch, no subject-aware crop | | | M | M | M |
 | Command palette (Ctrl or Cmd + K) | Not found | N | N | N | N | S |

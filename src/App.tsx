@@ -182,6 +182,7 @@ import {
 } from './utils/openTimelineIOImport';
 import { subscribeUsage } from './utils/usageTracker';
 import { prepareProjectForHqExport } from './utils/hqExportPrep';
+import { spreadWords, type SubtitleCue } from './utils/subtitleFormats';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { EFFECT_STACK_PRESETS, TRANSITIONS } from './constants';
 import { handleCloudOAuthCallback } from './services/cloudAuthService';
@@ -4380,6 +4381,45 @@ function App() {
         };
     }, [mediaItems, timelineClips]);
 
+    /** Subtitle clips from the cues of an imported SRT or VTT file, placed at the times the file gives. */
+    const importSubtitleCues = useCallback((cues: SubtitleCue[], fileName: string) => {
+        if (cues.length === 0) throw new Error('No subtitles were found in that file.');
+        const rangeStart = Math.min(...cues.map((cue) => cue.start));
+        const rangeEnd = Math.max(...cues.map((cue) => cue.end));
+        const track = ensureTitleOverlayTrack(rangeStart, rangeEnd);
+        const sharedMedia = createTransparentTitleMedia(`${fileName.replace(/\.[^.]+$/, '').slice(0, 24)} Subtitles`, rangeEnd - rangeStart);
+        const groupId = `subtitle-group-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+        const subtitleClips = cues.map((cue, index) => buildSubtitleClipFromWords(
+            sharedMedia.id,
+            track.id,
+            0,
+            'imported-subtitles',
+            groupId,
+            index,
+            spreadWords(cue).map((word) => ({ text: word.text, start: cue.start + word.start, end: cue.start + word.end })),
+            {
+                mediaId: sharedMedia.id,
+                trackId: track.id,
+                textConfig: {
+                    content: cue.text,
+                    font: 'Arial',
+                    size: 40,
+                    color: '#F8FAFC',
+                    position: 'bottom-center',
+                    autoContrast: true,
+                    motionPreset: null,
+                    background: DEFAULT_SUBTITLE_BACKGROUND,
+                },
+            } as unknown as TimelineClip,
+        ));
+        setMediaItems((prev) => [...prev, sharedMedia]);
+        setTimelineClips([...timelineClips, ...subtitleClips]);
+        setActiveTrackId(track.id);
+        setSelectedClipId(subtitleClips[0]?.id || null);
+        setPlayheadPosition(rangeStart);
+        return { count: subtitleClips.length };
+    }, [mediaItems, timelineClips, timelineTracks]);
+
     const applyTitleMotionPresetToClip = useCallback((clipId: string, preset: TitleMotionPreset) => {
         const clip = timelineClips.find((entry) => entry.id === clipId);
         if (!clip?.textConfig) return;
@@ -7566,6 +7606,7 @@ function App() {
             onUpdateSubtitleClipContent: updateSubtitleClipContent,
             onSplitSubtitleClip: splitSubtitleClip,
             onMergeSubtitleClip: mergeSubtitleClip,
+            onImportSubtitleCues: importSubtitleCues,
             onUpdateClipFilters: updateClipFilters,
             onApplyCSSEffect: (effect: EffectType) => {
                 if (!selectedClipId) return;
