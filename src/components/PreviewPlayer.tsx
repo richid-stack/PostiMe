@@ -5,6 +5,7 @@ import { buildFilterString, getBloomStrength, getGrainStrength, getHalationStren
 import { applyCubeLutToImageData } from '../utils/lut';
 import { keyFrame } from '../utils/chromaKeyGL';
 import { drawTitleLocal, layoutTitle, resolveTitleColors } from '../utils/titleLayout';
+import { activeCaptionWord, captionWordTimings } from '../utils/captionWords';
 import { buildStyleFilterForEffect, getClipEffectLayers, hasOverlayRenderer, mergeFilterChunk } from '../utils/effects';
 
 export interface PreviewPlayerHandle {
@@ -937,7 +938,10 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
                     ctx.globalAlpha = textOpacity;
                     ctx.translate(baseCenterX, baseCenterY);
                     ctx.scale(textScale, textScale);
-                    drawTitleLocal(ctx, layout, clip.textConfig, colors, canvas.width, textBlur);
+                    const litWord = clip.textConfig.captionStyle
+                        ? activeCaptionWord(captionWordTimings(clip), playhead)
+                        : -1;
+                    drawTitleLocal(ctx, layout, clip.textConfig, colors, canvas.width, textBlur, litWord);
                     ctx.restore();
                 }
             }

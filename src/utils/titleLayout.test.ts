@@ -99,3 +99,44 @@ test('a disabled plate does not widen the image', async () => {
   const off = planTitleRaster(fakeCtx(), config({ background: { enabled: false, color: '#000', opacity: 0.5, paddingX: 400, paddingY: 400, radius: 0 } }), 1920, 1080)!;
   assert.equal(off.width, 310);
 });
+
+// A context that records what is drawn and with which fill colour.
+const recordingCtx = () => {
+  const calls: { text: string; x: number; fill: string }[] = [];
+  const ctx: any = {
+    font: '', fillStyle: '', strokeStyle: '', lineWidth: 0, textAlign: '', textBaseline: '', filter: '', globalAlpha: 1,
+    measureText(text: string) {
+      const size = Number(/^(\d+(?:\.\d+)?)px/.exec(ctx.font)?.[1] ?? 10);
+      return { width: text.length * size * 0.5 } as TextMetrics;
+    },
+    save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {}, closePath() {}, fill() {},
+    strokeText() {},
+    fillText(text: string, x: number) { calls.push({ text, x, fill: ctx.fillStyle }); },
+  };
+  return { ctx, calls };
+};
+
+test('a caption draws word by word and lights only the chosen word', async () => {
+  const { layoutTitle, drawTitleLocal, resolveTitleColors } = await load();
+  const cfg = config({ content: 'one two\nthree', captionStyle: { mode: 'word-highlight', activeColor: '#facc15' } });
+  const { ctx, calls } = recordingCtx();
+  const layout = layoutTitle(ctx, cfg, 1920, 1080)!;
+  drawTitleLocal(ctx, layout, cfg, resolveTitleColors(cfg, null), 1920, 0, 1);
+  assert.deepEqual(calls.map((c) => c.text), ['one', 'two', 'three']);
+  assert.deepEqual(calls.map((c) => c.fill), ['#ffffff', '#facc15', '#ffffff']);
+  // centred lines: "one two" is 7 chars wide at 50 px a char = 350, so "one" starts 175 left of centre and "two" 4 chars on
+  assert.equal(calls[0].x, -175);
+  assert.equal(calls[1].x, -175 + 150 + 50);
+});
+
+test('no word is lit before the first word, and a plain title is drawn as whole lines', async () => {
+  const { layoutTitle, drawTitleLocal, resolveTitleColors } = await load();
+  const cfg = config({ content: 'one two', captionStyle: { mode: 'word-highlight', activeColor: '#facc15' } });
+  const a = recordingCtx();
+  drawTitleLocal(a.ctx, layoutTitle(a.ctx, cfg, 1920, 1080)!, cfg, resolveTitleColors(cfg, null), 1920, 0, -1);
+  assert.ok(a.calls.every((c) => c.fill === '#ffffff'));
+  const plain = config({ content: 'one two' });
+  const b = recordingCtx();
+  drawTitleLocal(b.ctx, layoutTitle(b.ctx, plain, 1920, 1080)!, plain, resolveTitleColors(plain, null), 1920, 0, 0);
+  assert.deepEqual(b.calls.map((c) => c.text), ['one two']);
+});

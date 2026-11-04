@@ -4268,6 +4268,7 @@ function App() {
                 position: textConfig?.position || 'bottom-center',
                 autoContrast: textConfig?.autoContrast ?? true,
                 motionPreset: textConfig?.motionPreset ?? null,
+                captionStyle: textConfig?.captionStyle ?? null,
                 background: textConfig?.background || DEFAULT_SUBTITLE_BACKGROUND,
             },
             subtitleSegment: {
@@ -4380,6 +4381,13 @@ function App() {
             transcript: scopedTranscript,
         };
     }, [mediaItems, timelineClips]);
+
+    /** Turn animated captions (the spoken word lights up) on or off for every clip of one subtitle group. */
+    const setCaptionStyleForGroup = useCallback((groupId: string, style: NonNullable<TimelineClip['textConfig']>['captionStyle']) => {
+        setTimelineClips(timelineClips.map((entry) => (entry.subtitleSegment?.groupId === groupId && entry.textConfig
+            ? { ...entry, textConfig: { ...entry.textConfig, captionStyle: style } }
+            : entry)));
+    }, [timelineClips]);
 
     /** Subtitle clips from the cues of an imported SRT or VTT file, placed at the times the file gives. */
     const importSubtitleCues = useCallback((cues: SubtitleCue[], fileName: string) => {
@@ -7607,6 +7615,7 @@ function App() {
             onSplitSubtitleClip: splitSubtitleClip,
             onMergeSubtitleClip: mergeSubtitleClip,
             onImportSubtitleCues: importSubtitleCues,
+            onSetCaptionStyle: setCaptionStyleForGroup,
             onUpdateClipFilters: updateClipFilters,
             onApplyCSSEffect: (effect: EffectType) => {
                 if (!selectedClipId) return;

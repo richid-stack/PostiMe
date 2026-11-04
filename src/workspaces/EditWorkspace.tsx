@@ -143,6 +143,7 @@ interface EditWorkspaceProps {
     onSplitSubtitleClip: (clipId: string) => void;
     onMergeSubtitleClip: (clipId: string, direction: 'previous' | 'next') => void;
     onImportSubtitleCues: (cues: SubtitleCue[], fileName: string) => { count: number };
+    onSetCaptionStyle: (groupId: string, style: NonNullable<TimelineClip['textConfig']>['captionStyle']) => void;
 }
 
 /* ─── Sub-panels ─── */
@@ -214,6 +215,7 @@ const LibraryPanel: React.FC<any> = (props) => {
                         onSplitSubtitleClip={props.onSplitSubtitleClip}
                         onMergeSubtitleClip={props.onMergeSubtitleClip}
                         onImportSubtitleCues={props.onImportSubtitleCues}
+                        onSetCaptionStyle={props.onSetCaptionStyle}
                         onSelectClip={props.onSelectClip}
                     />
                 );
@@ -1469,6 +1471,7 @@ const EditWorkspace: React.FC<EditWorkspaceProps> = (props) => {
                         onSplitSubtitleClip={props.onSplitSubtitleClip}
                         onMergeSubtitleClip={props.onMergeSubtitleClip}
                         onImportSubtitleCues={props.onImportSubtitleCues}
+                        onSetCaptionStyle={props.onSetCaptionStyle}
                         onLoadMediaToSource={loadMediaToSource}
                         onLoadLibraryAssetToSource={loadLibraryAssetToSource}
                         sourcePreviewFrame={sourcePreviewFrame}

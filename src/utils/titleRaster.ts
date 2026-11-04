@@ -35,6 +35,8 @@ export const rasterizeTitle = async (
   config: TitleConfig,
   canvasWidth: number,
   canvasHeight: number,
+  /** Caption word to light, or -1 for none. */
+  activeWord = -1,
 ): Promise<TitleRasterResult> => {
   await waitForFont(config);
   const canvas = document.createElement('canvas');
@@ -49,7 +51,7 @@ export const rasterizeTitle = async (
   if (!ctx) throw new Error('Could not draw the title for export.');
   ctx.clearRect(0, 0, plan.width, plan.height);
   ctx.translate(plan.width / 2, plan.height / 2);
-  drawTitleLocal(ctx, plan.layout, config, resolveTitleColors(config, null), canvasWidth);
+  drawTitleLocal(ctx, plan.layout, config, resolveTitleColors(config, null), canvasWidth, 0, activeWord);
 
   return {
     data: canvas.toDataURL('image/png'),

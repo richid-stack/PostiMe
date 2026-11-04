@@ -42,8 +42,17 @@ interface TitlesPanelProps {
   onSplitSubtitleClip: (clipId: string) => void;
   onMergeSubtitleClip: (clipId: string, direction: 'previous' | 'next') => void;
   onImportSubtitleCues: (cues: SubtitleCue[], fileName: string) => { count: number };
+  onSetCaptionStyle: (groupId: string, style: NonNullable<TimelineClip['textConfig']>['captionStyle']) => void;
   onSelectClip: (clipId: string | null) => void;
 }
+
+const CAPTION_COLORS = [
+  { label: 'Yellow', color: '#FACC15' },
+  { label: 'Cyan', color: '#22D3EE' },
+  { label: 'Green', color: '#4ADE80' },
+  { label: 'Pink', color: '#F472B6' },
+  { label: 'Orange', color: '#FB923C' },
+];
 
 const TITLE_PRESETS: TitlePreset[] = [
   {
@@ -327,6 +336,7 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
   onSplitSubtitleClip,
   onMergeSubtitleClip,
   onImportSubtitleCues,
+  onSetCaptionStyle,
   onSelectClip,
 }) => {
   const reviewFindings = useMemo(() => buildTitleReview(timelineClips, mediaItems), [mediaItems, timelineClips]);
@@ -358,6 +368,8 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
     setTranscriptDrafts(nextDrafts);
   }, [activeSubtitleGroup]);
 
+  const selectedGroupId = selectedClip?.subtitleSegment?.groupId || null;
+  const selectedCaptionStyle = selectedClip?.textConfig?.captionStyle || null;
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [fileStatus, setFileStatus] = useState<{ state: 'idle' | 'done' | 'error'; message: string }>({ state: 'idle', message: '' });
   const subtitleCues = useMemo(() => cuesFromClips(timelineClips), [timelineClips]);
@@ -565,6 +577,30 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
                   <div className="pk-details__body"><p className="pk-body">{subtitleStatus.transcript}</p></div>
                 </details>
               )}
+            </div>
+
+            <div className="pk-card">
+              <div className="pk-card__head">
+                <span className="pk-card__title">Animated captions</span>
+                <span className="pk-chip">{selectedGroupId ? (selectedCaptionStyle ? 'word highlight' : 'plain') : 'select a subtitle'}</span>
+              </div>
+              <p className="pk-hint">Lights up each word as it is spoken. Applies to every subtitle in the selected subtitle's set, in the preview and in exports.</p>
+              <div className="pk-actions">
+                <button type="button" className="edit-text-btn" disabled={!selectedGroupId || !selectedCaptionStyle} onClick={() => selectedGroupId && onSetCaptionStyle(selectedGroupId, null)}>Plain</button>
+                {CAPTION_COLORS.map((swatch) => (
+                  <button
+                    key={swatch.color}
+                    type="button"
+                    className={`edit-text-btn ${selectedCaptionStyle?.activeColor === swatch.color ? 'edit-text-btn--primary' : ''}`}
+                    disabled={!selectedGroupId}
+                    onClick={() => selectedGroupId && onSetCaptionStyle(selectedGroupId, { mode: 'word-highlight', activeColor: swatch.color })}
+                    title={`Highlight in ${swatch.label.toLowerCase()}`}
+                    aria-label={`Highlight words in ${swatch.label.toLowerCase()}`}
+                  >
+                    <span aria-hidden style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: swatch.color, marginRight: 6 }} />{swatch.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="pk-card">

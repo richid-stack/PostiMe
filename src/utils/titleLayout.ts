@@ -152,6 +152,8 @@ export const drawTitleLocal = (
   colors: TitleColors,
   canvasWidth: number,
   blur = 0,
+  /** Caption word to light (index among the text's words), or -1 for none. Only used with a caption style. */
+  activeWord = -1,
 ) => {
   const { position, size, font } = config;
   const localBlockX = -layout.maxLineWidth / 2;
@@ -180,10 +182,29 @@ export const drawTitleLocal = (
   ctx.strokeStyle = colors.stroke;
   ctx.fillStyle = colors.text;
   ctx.filter = blur > 0.01 ? `blur(${blur.toFixed(2)}px)` : 'none';
+  const captionStyle = config.captionStyle;
+  let wordIndex = 0;
   layout.lines.forEach((line, index) => {
     const lineY = localBlockY + index * layout.lineHeight;
-    ctx.strokeText(line, textXLocal, lineY);
-    ctx.fillText(line, textXLocal, lineY);
+    if (!captionStyle) {
+      ctx.strokeText(line, textXLocal, lineY);
+      ctx.fillText(line, textXLocal, lineY);
+      return;
+    }
+    // Animated caption: draw word by word so one can be lit. Words keep the spacing a whole line would have.
+    const words = line.split(/\s+/).filter(Boolean);
+    const space = ctx.measureText(' ').width;
+    const widths = words.map((word) => ctx.measureText(word).width);
+    const lineWidth = widths.reduce((sum, width) => sum + width, 0) + space * Math.max(0, words.length - 1);
+    let x = position.includes('left') ? textXLocal : position.includes('right') ? textXLocal - lineWidth : textXLocal - lineWidth / 2;
+    ctx.textAlign = 'left';
+    words.forEach((word, i) => {
+      ctx.fillStyle = wordIndex === activeWord ? captionStyle.activeColor : colors.text;
+      ctx.strokeText(word, x, lineY);
+      ctx.fillText(word, x, lineY);
+      x += widths[i] + space;
+      wordIndex += 1;
+    });
   });
 };
 

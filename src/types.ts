@@ -366,6 +366,12 @@ export type TimelineClip = {
     position: 'center' | 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
     autoContrast?: boolean;
     motionPreset?: Exclude<TitleMotionPreset, 'clear'> | null;
+    /** Animated captions: light up the word being spoken. Only meaningful on subtitle clips, which carry word timing. */
+    captionStyle?: {
+      mode: 'word-highlight';
+      /** Colour of the lit word. */
+      activeColor: string;
+    } | null;
     background?: {
       enabled?: boolean;
       color: string;
