@@ -1,3 +1,4 @@
+import type { BrandKit } from '../utils/brandKit';
 import {
   ElectronProjectApi,
   AngleMetadata,
@@ -45,6 +46,7 @@ type ProjectSnapshot = {
   namingTemplates?: NamingTemplate[];
   usageLedger?: UsageLedger;
   costSettings?: CostSettings;
+  brandKit?: BrandKit | null;
   nodeGraph?: NodeGraphState;
   designCanvas?: DesignCanvasState | null;
   setDesign?: SetDesignState | null;
@@ -137,6 +139,7 @@ type ProjectFile = {
   namingTemplates?: NamingTemplate[];
   usageLedger?: UsageLedger;
   costSettings?: CostSettings;
+  brandKit?: BrandKit | null;
   nodeGraph?: NodeGraphState;
   designCanvas?: DesignCanvasState | null;
   setDesign?: SetDesignState | null;
@@ -164,6 +167,7 @@ type ProjectLoadResult = {
   namingTemplates?: NamingTemplate[];
   usageLedger?: UsageLedger;
   costSettings?: CostSettings;
+  brandKit?: BrandKit | null;
   nodeGraph?: NodeGraphState;
   designCanvas?: DesignCanvasState | null;
   setDesign?: SetDesignState | null;
@@ -1238,6 +1242,7 @@ export const saveProjectToFolder = async (folderPath: string, snapshot: ProjectS
     namingTemplates: snapshot.namingTemplates,
     usageLedger: snapshot.usageLedger,
     costSettings: snapshot.costSettings,
+    brandKit: snapshot.brandKit ?? null,
     nodeGraph: snapshot.nodeGraph,
     designCanvas: snapshot.designCanvas,
     setDesign: snapshot.setDesign,

@@ -1,5 +1,7 @@
 
 import { pickVoiceoverTrack } from './utils/voiceoverPlacement';
+import { applyBrandToTextConfig, normalizeBrandKit, titleRole, type BrandKit } from './utils/brandKit';
+import { loadBrandFonts } from './utils/brandFonts';
 import { DEFAULT_CHROMA_KEY } from './utils/chromaKey';
 import { FAL_VIDEO_CATALOG } from './services/falVideoCatalog';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -961,6 +963,7 @@ function App() {
     const [namingTemplates, setNamingTemplates] = useState<NamingTemplate[]>([]);
     const [usageLedger, setUsageLedger] = useState<UsageLedger>(INITIAL_USAGE_LEDGER);
     const [costSettings, setCostSettings] = useState<CostSettings>(DEFAULT_COST_SETTINGS);
+    const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
     const [waveformCache, setWaveformCache] = useState<WaveformCache>({});
     const [nodeGraph, setNodeGraph] = useState<NodeGraphState | null>(null);
     const [designCanvasState, setDesignCanvasState] = useState<DesignCanvasState | null>(null);
@@ -2985,6 +2988,7 @@ function App() {
             setNamingTemplates(Array.isArray(project.namingTemplates) ? project.namingTemplates : []);
             setUsageLedger(project.usageLedger ?? INITIAL_USAGE_LEDGER);
             setCostSettings(normalizeCostSettings(project.costSettings));
+            setBrandKit(normalizeBrandKit(project.brandKit));
             resetMediaItems(project.mediaItems || []);
             const loadedClips = Array.isArray(project.timelineClips)
                 ? project.timelineClips.map((clip) => {
@@ -3262,6 +3266,7 @@ function App() {
                     namingTemplates,
                     usageLedger,
                     costSettings,
+                    brandKit,
                 },
                 projectName || storyBible.title || 'Untitled Project',
             );
@@ -3374,6 +3379,7 @@ function App() {
                     namingTemplates,
                     usageLedger,
                     costSettings,
+                    brandKit,
                 },
                 projectName || storyBible.title || 'Untitled Project',
             );
@@ -3421,6 +3427,7 @@ function App() {
         namingTemplates,
         usageLedger,
         costSettings,
+        brandKit,
         mediaItems,
         timelineClips,
         timelineTracks,
@@ -3950,6 +3957,41 @@ function App() {
         return newItems;
     };
 
+    // Uploaded brand fonts have to be registered before a title can use them (project load, or a new font)
+    useEffect(() => {
+        if (brandKit?.fonts.length) void loadBrandFonts(brandKit.fonts);
+    }, [brandKit?.fonts]);
+
+    /** Restyle titles with the brand kit: the selected clip, or every title and caption. */
+    const handleApplyBrand = (scope: 'selected' | 'all') => {
+        if (!brandKit) return;
+        setTimelineClips(timelineClips.map((clip) => {
+            if (!clip.textConfig) return clip;
+            if (scope === 'selected' && clip.id !== selectedClipId) return clip;
+            return { ...clip, textConfig: applyBrandToTextConfig(clip.textConfig, brandKit, titleRole(clip)) };
+        }));
+    };
+
+    /** The brand logo as a watermark: its own video track on top, top right, for the whole timeline. */
+    const handleAddBrandLogo = async () => {
+        const logo = brandKit?.logo;
+        if (!logo) return;
+        const response = await fetch(logo.dataUrl);
+        const blob = await response.blob();
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([blob], logo.name, { type: blob.type }));
+        const [media] = await handleAddMedia(transfer.files);
+        if (!media) return;
+        const total = Math.max(5, ...timelineClips.map((clip) => clip.end));
+        const track = createTimelineTrack('video', timelineTracks);
+        setTimelineTracks((prev) => [...prev, track]);
+        appendMediaToTimeline({ ...media, duration: total }, {
+            track,
+            startTime: 0,
+            overrides: { transform: { scale: 0.16, opacity: 1, position: { x: 90, y: 11 } } },
+        });
+    };
+
     /**
      * A finished voiceover take: add it to the media bin and lay it on an audio track at `startTime`.
      * It goes on the first unlocked audio track that is free for its whole length, else on a new audio track,
@@ -4002,7 +4044,7 @@ function App() {
         return `${applied.summary}${warningText}`;
     };
 
-    const appendMediaToTimeline = (media: MediaItem, placement?: { trackId?: string; track?: TimelineTrack; startTime?: number; sourceIn?: number; sourceOut?: number }) => {
+    const appendMediaToTimeline = (media: MediaItem, placement?: { trackId?: string; track?: TimelineTrack; startTime?: number; sourceIn?: number; sourceOut?: number; overrides?: Partial<TimelineClip> }) => {
         const track = placement?.track ?? resolveTimelineTrackForMedia(media, placement?.trackId);
         if (!track) {
             if (!placement?.trackId) {
@@ -4035,6 +4077,7 @@ function App() {
             sourceIn,
             sourceOut,
             effect: null,
+            ...placement?.overrides,
         });
 
         setActiveTrackId(track.id);
@@ -7615,6 +7658,10 @@ function App() {
             trimMode: editTrimMode,
             onAddMedia: handleAddMedia,
             onRecordVoiceover: handleRecordVoiceover,
+            brandKit,
+            onChangeBrandKit: setBrandKit,
+            onApplyBrand: handleApplyBrand,
+            onAddBrandLogo: handleAddBrandLogo,
             onAddToTimeline: handleAddToTimeline,
             onImportLibraryAsset: handleImportLibraryAsset,
             onDropLibraryAsset: handleDropLibraryAsset,

@@ -31,6 +31,7 @@ import EditorAgentPanel from '../components/EditorAgentPanel';
 import TitlesPanel, { TitlePreset } from '../components/TitlesPanel';
 import type { SubtitleCue } from '../utils/subtitleFormats';
 import RecorderModal from '../components/RecorderModal';
+import type { BrandKit } from '../utils/brandKit';
 import { MicIcon, ChevronLeftIcon, ChevronRightIcon, BrushIcon, MaximizeIcon, KeyboardIcon, PaletteIcon, FilmIcon, TextIcon, EffectsIcon, TransitionsIcon, MusicNoteIcon, ScissorsIcon, BrainIcon } from '../components/icons';
 import EditTransportBar from '../components/EditTransportBar';
 import { formatTimecode, DEFAULT_TIMELINE_FPS } from '../utils/timecode';
@@ -146,6 +147,10 @@ interface EditWorkspaceProps {
     onImportSubtitleCues: (cues: SubtitleCue[], fileName: string) => { count: number };
     /** A finished voiceover take, to be laid on an audio track starting at `startTime` seconds. */
     onRecordVoiceover?: (file: File, startTime: number) => void | Promise<void>;
+    brandKit?: BrandKit | null;
+    onChangeBrandKit?: (kit: BrandKit | null) => void;
+    onApplyBrand?: (scope: 'selected' | 'all') => void;
+    onAddBrandLogo?: () => void;
     onSetCaptionStyle: (groupId: string, style: NonNullable<TimelineClip['textConfig']>['captionStyle']) => void;
 }
 
@@ -210,6 +215,10 @@ const LibraryPanel: React.FC<any> = (props) => {
                         previewFrameUrl={props.sourcePreviewFrame}
                         previewSourceLabel={props.sourcePreviewLabel}
                         onCreateTitleClip={props.onCreateTitleClip}
+                        brandKit={props.brandKit}
+                        onChangeBrandKit={props.onChangeBrandKit}
+                        onApplyBrand={props.onApplyBrand}
+                        onAddBrandLogo={props.onAddBrandLogo}
                         onApplyPresetToSelected={props.onApplyTitlePresetToSelected}
                         onApplyTreatmentToSelected={props.onApplyTitleTreatmentToSelected}
                         onApplyMotionToSelected={props.onApplyTitleMotionToSelected}

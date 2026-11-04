@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MediaItem, TimelineClip, TitleMotionPreset } from '../types';
 import { TextIcon, CheckCircleIcon, ScissorsIcon } from './icons';
+import BrandKitPanel from './BrandKitPanel';
+import { applyBrandToTextConfig, findOffBrandTitles, type BrandKit } from '../utils/brandKit';
 import { cuesFromClips, formatSrt, formatVtt, parseSubtitles, type SubtitleCue } from '../utils/subtitleFormats';
 
 export type TitlePreset = {
@@ -44,6 +46,10 @@ interface TitlesPanelProps {
   onImportSubtitleCues: (cues: SubtitleCue[], fileName: string) => { count: number };
   onSetCaptionStyle: (groupId: string, style: NonNullable<TimelineClip['textConfig']>['captionStyle']) => void;
   onSelectClip: (clipId: string | null) => void;
+  brandKit?: BrandKit | null;
+  onChangeBrandKit?: (kit: BrandKit | null) => void;
+  onApplyBrand?: (scope: 'selected' | 'all') => void;
+  onAddBrandLogo?: () => void;
 }
 
 const CAPTION_COLORS = [
@@ -338,7 +344,17 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
   onImportSubtitleCues,
   onSetCaptionStyle,
   onSelectClip,
+  brandKit = null,
+  onChangeBrandKit,
+  onApplyBrand,
+  onAddBrandLogo,
 }) => {
+  const offBrand = useMemo(() => (brandKit ? findOffBrandTitles(timelineClips, brandKit) : []), [brandKit, timelineClips]);
+  // with a brand kit, new titles start in the brand's font and colours
+  const branded = (preset: TitlePreset): TitlePreset => (brandKit
+    ? { ...preset, textConfig: applyBrandToTextConfig(preset.textConfig, brandKit, preset.family === 'subtitle' ? 'body' : 'heading') }
+    : preset);
+  const titleCount = useMemo(() => timelineClips.filter((clip) => clip.textConfig).length, [timelineClips]);
   const reviewFindings = useMemo(() => buildTitleReview(timelineClips, mediaItems), [mediaItems, timelineClips]);
   const selectedClipHasText = Boolean(selectedClip?.textConfig);
   const selectedClipMedia = selectedClip ? mediaItems.find((item) => item.id === selectedClip.mediaId) || null : null;
@@ -419,7 +435,7 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
     }
   };
 
-  const [view, setView] = useState<'presets' | 'style' | 'subtitles' | 'review'>('presets');
+  const [view, setView] = useState<'presets' | 'style' | 'subtitles' | 'brand' | 'review'>('presets');
   const [presetFilter, setPresetFilter] = useState<'all' | TitlePreset['family']>('all');
 
   const FAMILY_LABEL: Record<TitlePreset['family'], string> = { 'lower-third': 'Lower thirds', kinetic: 'Kinetic', subtitle: 'Subtitles' };
@@ -437,7 +453,7 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
     const bg = preset.textConfig.background;
     const fontSize = Math.max(7, Math.min(13, preset.textConfig.size * 0.11));
     return (
-      <div key={preset.id} className="fx-tile fx-tile--div" role="group" aria-label={preset.label} title={`${preset.label}\n${preset.description}\n${preset.safeNote}`} onClick={() => onCreateTitleClip(preset)}>
+      <div key={preset.id} className="fx-tile fx-tile--div" role="group" aria-label={preset.label} title={`${preset.label}\n${preset.description}\n${preset.safeNote}`} onClick={() => onCreateTitleClip(branded(preset))}>
         <div className="fx-tile__thumb">
           {previewFrameUrl ? <img src={previewFrameUrl} alt="" draggable={false} /> : <div className="fx-tile__placeholder" />}
           <div className="title-tile__text" style={{ justifyContent: align, alignItems: valign }}>
@@ -458,8 +474,8 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
           </div>
           <span className="fx-tile__badge">{preset.duration.toFixed(1)}s</span>
           <div className="fx-tile__actions">
-            <button type="button" className="fx-tile__action fx-tile__action--primary" onClick={(event) => { event.stopPropagation(); onCreateTitleClip(preset); }}>Add</button>
-            <button type="button" className="fx-tile__action" disabled={!selectedClip} onClick={(event) => { event.stopPropagation(); onApplyPresetToSelected(preset); }} title={selectedClip ? 'Apply this style to the selected clip' : 'Select a clip first'}>To selected</button>
+            <button type="button" className="fx-tile__action fx-tile__action--primary" onClick={(event) => { event.stopPropagation(); onCreateTitleClip(branded(preset)); }}>Add</button>
+            <button type="button" className="fx-tile__action" disabled={!selectedClip} onClick={(event) => { event.stopPropagation(); onApplyPresetToSelected(branded(preset)); }} title={selectedClip ? 'Apply this style to the selected clip' : 'Select a clip first'}>To selected</button>
           </div>
         </div>
         <span className="fx-tile__name">{preset.label}</span>
@@ -469,13 +485,14 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
 
   return (
     <div className="fx-browser">
-      <div className="fx-browser__header">
+      <div className="fx-browser__header" style={{ flexWrap: 'wrap', rowGap: 8 }}>
         <h3 className="fx-browser__title">Titles</h3>
-        <div className="edit-seg" role="tablist" aria-label="Titles view">
+        <div className="edit-seg" role="tablist" aria-label="Titles view" style={{ gridAutoFlow: 'row', gridTemplateColumns: 'repeat(3, 1fr)', width: '100%' }}>
           {([
             { id: 'presets', label: 'Presets' },
             { id: 'style', label: 'Style' },
             { id: 'subtitles', label: 'Subtitles' },
+            { id: 'brand', label: 'Brand' },
             { id: 'review', label: reviewFindings.length > 0 ? `Review · ${reviewFindings.length}` : 'Review' },
           ] as const).map((tab) => (
             <button key={tab.id} type="button" role="tab" aria-selected={view === tab.id} className={`edit-seg__item ${view === tab.id ? 'edit-seg__item--active' : ''}`} onClick={() => setView(tab.id)}>{tab.label}</button>
@@ -553,6 +570,19 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
               </>
             )}
           </div>
+        )}
+
+        {view === 'brand' && onChangeBrandKit && (
+          <BrandKitPanel
+            kit={brandKit}
+            onChange={onChangeBrandKit}
+            titleCount={titleCount}
+            selectedIsTitle={selectedClipHasText}
+            offBrand={offBrand}
+            onApply={(scope) => onApplyBrand?.(scope)}
+            onAddLogo={() => onAddBrandLogo?.()}
+            onSelectClip={onSelectClip}
+          />
         )}
 
         {view === 'subtitles' && (
@@ -690,6 +720,7 @@ const TitlesPanel: React.FC<TitlesPanelProps> = ({
       <footer className="fx-browser__footer">
         {view === 'presets' && <span>Click a preset to add it as a new clip at the playhead · hover for “To selected”</span>}
         {view === 'style' && <span>{selectedClipHasText ? 'Changes apply instantly to the selected title' : 'Select a title clip on the timeline'}</span>}
+        {view === 'brand' && <span>The brand is saved with the project</span>}
         {view === 'subtitles' && <span>Subtitle cards are regular text clips — edit them here or in the Inspector</span>}
         {view === 'review' && <span>Click a finding to jump to the clip</span>}
       </footer>
