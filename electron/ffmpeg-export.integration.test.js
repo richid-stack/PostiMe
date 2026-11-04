@@ -174,3 +174,53 @@ test('HQ export draws titles from the images the app sends, and refuses a title 
     await assert.rejects(render('title-missing.mp4', titleClip({ textRaster: undefined })), /title was not drawn/i);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('HQ export renders transitions between clips', { skip: !ffmpegPath && 'no FFmpeg binary' }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'postime-hq-trans-'));
+    const solid = (name, hex) => run(['-f', 'lavfi', '-i', `color=c=0x${hex}:s=320x180:r=30:d=3`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(dir, `${name}.mp4`)]);
+    solid('a', 'c82828');
+    solid('b', '283cc8');
+    const A = [200, 40, 40];
+    const B = [40, 60, 200];
+
+    const { renderTimeline } = require('./ffmpeg-handler.js');
+    const mediaItems = [{ id: 'a', type: 'video', path: 'a.mp4' }, { id: 'b', type: 'video', path: 'b.mp4' }];
+    const timelineTracks = [{ id: 'v1', type: 'video', isMuted: false }];
+    const clip = (id, mediaId, start, extra = {}) => ({ id, mediaId, trackId: 'v1', start, end: start + 3, duration: 3, speed: 1, sourceIn: 0, sourceOut: 3, effect: null, ...extra });
+    const render = (type, duration = 1) => renderTimeline(dir, {
+        mediaItems,
+        timelineTracks,
+        timelineClips: [clip('a', 'a', 0, { transitionOut: { type, duration } }), clip('b', 'b', 3)],
+    }, { width: 320, height: 180, fps: 30, bitrateKbps: 3000, videoCodec: 'h264', container: 'mp4', filename: `t-${type.replace(/ /g, '')}.mp4`, gpuAcceleration: 'off' });
+    const mix = (c1, c2, a) => c1.map((v, i) => v * (1 - a) + c2[i] * a);
+    const near = (actual, expected, label) => actual.forEach((value, i) => assert.ok(Math.abs(value - expected[i]) <= 9, `${label}: expected about ${expected.map(Math.round)}, got ${actual}`));
+    const frame = (file, t, x = 160) => pixelAt(file, t, x, 90, 320, 180);
+
+    // half way through a one second transition at t = 2.5; before it the first clip is plain, after it the second is
+    const cross = await render('Cross Fade');
+    near(frame(cross, 1.5), A, 'before the transition');
+    near(frame(cross, 2.5), mix(mix([0, 0, 0], A, 0.5), B, 0.5), 'cross fade');
+    near(frame(cross, 3.5), B, 'after the transition');
+
+    near(frame(await render('Fade to Black'), 2.5), mix([0, 0, 0], A, 0.5), 'fade to black');
+    near(frame(await render('Dip to White'), 2.5), [204, 204, 204], 'dip to white');
+
+    const swipe = await render('Swipe Left');
+    near(frame(swipe, 2.5, 80), A, 'swipe: ending clip still on the left');
+    near(frame(swipe, 2.5, 240), B, 'swipe: next clip arriving on the right');
+
+    const whip = await render('Whip Pan');
+    near(frame(whip, 2.5, 160), [0, 0, 0], 'whip pan: nothing in the middle at the half way point');
+
+    const flash = await render('Lightning Flash');
+    near(frame(flash, 2.5), mix(mix(mix([0, 0, 0], A, 0.35), B, 0.2424), [255, 255, 255], 0.95), 'lightning flash');
+
+    const burn = await render('Film Burn');
+    const c2 = mix(mix([0, 0, 0], A, 0.54), B, 0.3902);
+    const gradient = [255, 146, 52];
+    const screened = c2.map((v, i) => 255 - ((255 - v) * (255 - gradient[i])) / 255);
+    near(frame(burn, 2.5), mix(c2, screened, (142 / 255) * 0.85), 'film burn');
+
+    await assert.rejects(render('Star Wipe'), /Star Wipe/);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

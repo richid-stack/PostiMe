@@ -17,7 +17,7 @@ The engine, the AI tool layer, the Electron shell, the server and API code, the 
 - Every emoji replaced by an icon in the editor's own style (`src/components/GlyphIcon.tsx`, new entries at the end of `src/components/icons.tsx`).
 - Tailwind compiled at build time; hue utilities collapse onto the single accent.
 - Onboarding, account menu and Settings → Appearance rebuilt.
-- Export and keying: timeline chroma key now renders in the preview (GPU shader) and in HQ export; HQ FFmpeg export and Quick Export now carry audio (upstream dropped it). Modules: `src/utils/chromaKey*.ts`, `electron/ffmpeg-audio-graph.js`, `electron/ffmpeg-chroma.js`, `electron/ffmpeg-composite.js`. HQ export also now renders blend modes, custom LUTs, opacity keyframes and titles (`electron/ffmpeg-title.js`, `src/utils/title*.ts`) instead of refusing them, and Quick Export no longer records the title-safe guides.
+- Export and keying: timeline chroma key now renders in the preview (GPU shader) and in HQ export; HQ FFmpeg export and Quick Export now carry audio (upstream dropped it). Modules: `src/utils/chromaKey*.ts`, `electron/ffmpeg-audio-graph.js`, `electron/ffmpeg-chroma.js`, `electron/ffmpeg-composite.js`. HQ export also now renders blend modes, custom LUTs, opacity keyframes, titles (`electron/ffmpeg-title.js`, `src/utils/title*.ts`) and transitions (`electron/ffmpeg-transition.js`) instead of refusing them, and Quick Export no longer records the title-safe guides.
 - Fixes: assistant auto-scroll no longer scrolls the whole app frame; side panels keep a usable minimum width; translucent gray surfaces follow the theme.
 
 ## Branding

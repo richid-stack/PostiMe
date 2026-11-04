@@ -37,7 +37,8 @@ These are defects in what the app already offered. Done items stay here so the h
 | Audio in Quick Export | **Built** | Quick Export recorded the picture only. The player now routes every clip's sound into the recording. Playback is silent while exporting. Checked in a real browser: placement and levels were right. | done |
 | Blend modes, custom LUTs and opacity keyframes in HQ export | **Built** | All nine blend modes the Inspector offers, imported `.cube` LUTs (with the intensity slider) and keyframed opacity now render in HQ export. Blend modes are done in RGB and masked by the clip's own alpha, so a keyed clip still blends correctly. Checked on real renders against hand-calculated colours, including a keyed clip with a grade and a LUT. | done |
 | Titles and text overlays in HQ export | **Built** | Each title is drawn in the app with the same code as the preview (fonts, plates, lower-third bars, outline) into a transparent image at the export size, then placed like any clip, so position, scale, opacity and keyframes work. Checked in a real browser against a real render: the title, a lower-third bar and a sliding, fading title match the preview to within a pixel. Not carried over: "auto contrast" (it samples the picture behind the title in the preview) and the text blur keyframe. | done |
-| HQ export still rejects transitions | **Partial** | Transitions still stop an HQ export with a clear message. FFmpeg's `xfade` covers most of them, so this is build work, not a limit. Audio-only export is also unsupported. Quick Export handles transitions because it records the preview. | M |
+| Transitions in HQ export | **Built** | All ten transitions (Cross Fade, Fade to Black, Fade to White, Dip to White, Zoom In, Swipe Left, Glitch Cut, Whip Pan, Lightning Flash, Film Burn) render in HQ export using the preview's own formulas, written as FFmpeg expressions, so the glitch shake and the flash curves match. Checked on real renders against hand-calculated pixels at the half-way point, and before and after. Like the preview, the next clip shows as a held first frame during the transition, sound is not crossfaded, and the held frame ignores the next clip's keyframes, key and custom LUT. | done |
+| Audio-only export | **Partial** | Still unsupported in HQ export. | S |
 | Quick Export burned guides into titled videos | **Fixed** | The preview draws dashed "Title Safe" guides whenever a title is on screen, and Quick Export records that canvas, so the guides were in the exported file. Upstream behaviour. The export player now hides them. | done |
 | Compositing palette promises | **Partial** | Tracker, stabilise, match-move, roto and others are in the node palette. The in-app render path I read handles key, grade and merge on stills. Label the rest "needs Natron or Nuke" or build them. | S |
 | Logo and plugin registry | **Partial** | The in-app logo is still upstream's, and the default plugin registry points at the upstream author's repository. Release blockers. | S |
@@ -49,6 +50,8 @@ Limits worth knowing:
 - A red key colour is keyed but not despilled in HQ export, because FFmpeg's `despill` only supports green and blue.
 - HQ export places clips on even pixels (FFmpeg's overlay snaps positions on 4:2:0 video), so a clip can sit up to 1 px from where the preview draws it.
 - Title size is in pixels of the export canvas, the same as Quick Export, so a title looks relatively smaller in a 4K export than in a 1080p one.
+
+Everything the preview can show now also exports through HQ export, except audio-only output and the two title items noted above.
 
 ## Phase 1: the creator loop
 

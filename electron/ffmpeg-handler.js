@@ -9,6 +9,13 @@ const { buildAudioFilterGraph, buildAudioEncodingOptions } = require('./ffmpeg-a
 const { buildFfmpegChromaKeyFilter } = require('./ffmpeg-chroma');
 const { buildCompositeFilters, buildLutFilter, resolveBlendMode, serializeCubeLut } = require('./ffmpeg-composite');
 const { decodePngDataUrl, placeTitleClip } = require('./ffmpeg-title');
+const {
+    buildBurnGradientSource,
+    buildOverlayStrength,
+    buildTransitionModifiers,
+    expandTransitionEntries,
+    isSupportedTransition,
+} = require('./ffmpeg-transition');
 const os = require('os');
 
 const execFileAsync = promisify(execFile);
@@ -950,8 +957,8 @@ const buildRenderPlan = ({ folderPath, project }) => {
             }
         }
 
-        if (clip.transitionOut?.type && Number(clip.transitionOut.duration) > 0) {
-            issues.push(`${clipLabel}: transitions are not supported in HQ FFmpeg export yet.`);
+        if (clip.transitionOut?.type && Number(clip.transitionOut.duration) > 0 && !isSupportedTransition(clip.transitionOut.type)) {
+            issues.push(`${clipLabel}: transition "${clip.transitionOut.type}" is not supported in HQ FFmpeg export yet.`);
             continue;
         }
 
@@ -1014,7 +1021,7 @@ const buildRenderPlan = ({ folderPath, project }) => {
 
     const totalDuration = visualEntries.reduce((max, entry) => Math.max(max, entry.end), 0);
     return {
-        visualEntries,
+        visualEntries: expandTransitionEntries(visualEntries),
         audioEntries,
         totalDuration: Math.max(0.05, totalDuration),
         hasActiveAudio,
@@ -1050,6 +1057,41 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
     const audioSources = [];
 
     renderPlan.visualEntries.forEach((entry, clipIndex) => {
+        // A transition's white wash or burn gradient: drawn over everything composited so far.
+        if (entry.kind === 'white' || entry.kind === 'burn') {
+            const overlayTag = `x${clipIndex}`;
+            const overlayNext = `canvas${clipIndex + 1}`;
+            const strength = buildOverlayStrength({ kind: entry.kind, ...entry.transition, timeVar: 'T' });
+            if (entry.kind === 'white') {
+                complexFilter.push(
+                    `color=c=white:s=${width}x${height}:r=${fps}:d=${formatNumber(renderPlan.totalDuration, 5)}[${overlayTag}_w]`,
+                    `[${canvasLabel}][${overlayTag}_w]blend=all_expr='A*(1-(${strength}))+B*(${strength})':enable='between(t,${formatNumber(entry.start, 5)},${formatNumber(entry.end, 5)})'[${overlayNext}]`,
+                );
+            } else {
+                complexFilter.push(
+                    `${buildBurnGradientSource({ width, height, fps, totalDuration: renderPlan.totalDuration })}[${overlayTag}_g]`,
+                    ...buildCompositeFilters({
+                        tag: overlayTag,
+                        canvasLabel,
+                        clipLabel: `${overlayTag}_g`,
+                        nextLabel: overlayNext,
+                        xExpr: '0',
+                        yExpr: '0',
+                        start: entry.start,
+                        end: entry.end,
+                        width,
+                        height,
+                        fps,
+                        totalDuration: renderPlan.totalDuration,
+                        blendMode: 'screen',
+                        opacityExpr: strength,
+                    }),
+                );
+            }
+            canvasLabel = overlayNext;
+            return;
+        }
+
         if (entry.hasAudio && entry.mediaItem.type === 'video') {
             audioSources.push({ inputIndex, entry });
         }
@@ -1067,7 +1109,10 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
         } else {
             cmd.input(sourcePath);
             const durationFilters = [];
-            if (visibleDuration < playbackDuration - 0.001) {
+            if (entry.isGhost) {
+                // the next clip has not started yet, so the transition shows its first frame, held
+                durationFilters.push('trim=end_frame=1', `tpad=stop_mode=clone:stop_duration=${formatNumber(visibleDuration, 5)}`);
+            } else if (visibleDuration < playbackDuration - 0.001) {
                 durationFilters.push(`trim=duration=${formatNumber(visibleDuration, 5)}`);
             } else if (visibleDuration > playbackDuration + 0.001) {
                 durationFilters.push(`tpad=stop_mode=clone:stop_duration=${formatNumber(visibleDuration - playbackDuration, 5)}`);
@@ -1135,9 +1180,18 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
                 timeVar: `(t-${formatNumber(start, 5)})`,
             });
 
+        // A transition changes the clip's scale, position and opacity over its last seconds. The scale filter sees
+        // seconds since the clip started, so timeline seconds there are t plus the clip's start.
+        const transitionFor = (timeVar) => (entry.transition
+            ? buildTransitionModifiers({ ...entry.transition, width, timeVar })
+            : {});
+        const scaleTransition = transitionFor(`t+${formatNumber(start, 5)}`);
+        let finalScaleExpr = scaleExpr;
+        if (scaleTransition.scaleAdd) finalScaleExpr = `((${finalScaleExpr})+(${scaleTransition.scaleAdd}))`;
+        if (scaleTransition.scaleMul) finalScaleExpr = `((${finalScaleExpr})*(${scaleTransition.scaleMul}))`;
         currentLabel = addSimpleStep(
             currentLabel,
-            `scale=w='max(2,trunc(iw*(${scaleExpr})/2)*2)':h='max(2,trunc(ih*(${scaleExpr})/2)*2)':eval=frame`,
+            `scale=w='max(2,trunc(iw*(${finalScaleExpr})/2)*2)':h='max(2,trunc(ih*(${finalScaleExpr})/2)*2)':eval=frame`,
             clipTag,
             stepCounter,
         );
@@ -1187,7 +1241,7 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
         stepCounter += 1;
 
         const nextCanvas = `canvas${clipIndex + 1}`;
-        const opacityExpr = opacityKeyframes.length > 0
+        let opacityExpr = opacityKeyframes.length > 0
             ? buildAnimatedValueExpression({
                 baseValue: baseOpacity,
                 keyframes: opacityKeyframes,
@@ -1197,12 +1251,18 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
                 maxValue: 1,
             })
             : null;
+        const fadeTransition = transitionFor('T');
+        if (fadeTransition.alpha) {
+            opacityExpr = opacityExpr ? `((${opacityExpr})*(${fadeTransition.alpha}))` : fadeTransition.alpha;
+        }
+        const slideTransition = transitionFor('t');
+        const slideExpr = slideTransition.dxPx ? `+(${slideTransition.dxPx})` : '';
         complexFilter.push(...buildCompositeFilters({
             tag: clipTag,
             canvasLabel,
             clipLabel: currentLabel,
             nextLabel: nextCanvas,
-            xExpr: `(main_w*(${xExpr})/100)-overlay_w/2`,
+            xExpr: `(main_w*(${xExpr})/100)-overlay_w/2${slideExpr}`,
             yExpr: `(main_h*(${yExpr})/100)-overlay_h/2`,
             start,
             end,
@@ -1320,7 +1380,7 @@ const renderTimelineInner = async (folderPath, project, settings, onProgress, te
     const renderPlan = buildRenderPlan({ folderPath, project });
     // FFmpeg reads custom LUTs from .cube files, so write each one next to the output and remove it afterwards.
     renderPlan.visualEntries.forEach((entry, index) => {
-        if (!hasCustomLut(entry.clip)) return;
+        if (!entry.clip || !hasCustomLut(entry.clip)) return;
         const lutPath = path.join(os.tmpdir(), `postime-lut-${process.pid}-${Date.now()}-${index}.cube`);
         fs.writeFileSync(lutPath, serializeCubeLut(entry.clip.filters.customLut));
         tempFiles.push(lutPath);
@@ -1334,7 +1394,7 @@ const renderTimelineInner = async (folderPath, project, settings, onProgress, te
         entry.sourcePath = titlePath;
     });
     await Promise.all(renderPlan.visualEntries.map(async (entry) => {
-        if (entry.mediaItem.type === 'video') {
+        if (entry.mediaItem?.type === 'video' && !entry.isGhost) {
             entry.hasAudio = await inspectHasAudio(entry.sourcePath);
         }
     }));
