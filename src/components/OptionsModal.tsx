@@ -61,9 +61,11 @@ interface OptionsModalProps {
     config: OptionsModalConfig | null;
     onClose: () => void;
     onSubmit: (values: Record<string, any>, pricing: PricingResult | null) => void | Promise<void>;
+    /** Says where the project budget would stand if this generation went ahead. */
+    budgetNote?: (pricing: PricingResult) => { text: string; tone: 'ok' | 'warn' | 'over'; blocked: boolean } | null;
 }
 
-const OptionsModal: React.FC<OptionsModalProps> = ({ isOpen, config, onClose, onSubmit }) => {
+const OptionsModal: React.FC<OptionsModalProps> = ({ isOpen, config, onClose, onSubmit, budgetNote }) => {
     const [formState, setFormState] = useState<Record<string, any>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [filePreview, setFilePreview] = useState<{
@@ -118,10 +120,11 @@ const OptionsModal: React.FC<OptionsModalProps> = ({ isOpen, config, onClose, on
     };
 
     const pricing = config.pricing?.compute(formState) || null;
+    const budget = pricing && budgetNote ? budgetNote(pricing) : null;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isSubmitting) return;
+        if (isSubmitting || budget?.blocked) return;
         setIsSubmitting(true);
         try {
             await onSubmit(formState, pricing);
@@ -260,12 +263,22 @@ const OptionsModal: React.FC<OptionsModalProps> = ({ isOpen, config, onClose, on
                             {pricing.detail && (
                                 <div className="text-xs app-muted mt-1">{pricing.detail}</div>
                             )}
+                            {budget && budget.text && (
+                                <div
+                                    className="mt-2 text-xs font-semibold"
+                                    data-testid="budget-note"
+                                    role={budget.tone === 'ok' ? undefined : 'alert'}
+                                    style={{ color: budget.tone === 'over' ? '#fca5a5' : budget.tone === 'warn' ? '#fcd34d' : undefined }}
+                                >
+                                    {budget.text}
+                                </div>
+                            )}
                         </div>
                     )}
                     <div className="flex justify-end gap-2 pt-4">
                          <button type="button" onClick={onClose} className="app-button app-secondary" disabled={isSubmitting}>Cancel</button>
-                         <button type="submit" className="app-button app-primary" disabled={isSubmitting}>
-                            {isSubmitting ? 'Checking...' : (config.submitText || 'Generate')}
+                         <button type="submit" className="app-button app-primary" disabled={isSubmitting || Boolean(budget?.blocked)} title={budget?.blocked ? 'This would pass the project budget' : undefined}>
+                            {isSubmitting ? 'Checking...' : budget?.blocked ? 'Over budget' : (config.submitText || 'Generate')}
                          </button>
                     </div>
                 </form>

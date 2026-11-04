@@ -7579,3 +7579,16 @@ button:focus:not(:focus-visible) { outline: none; }
 body[data-theme="light"] .app-button.app-primary, body[data-theme="light"] .app-button.app-primary:hover,
 .studio-workspace .app-button.app-primary, .project-hub .app-button.app-primary, .page-shell .app-button.app-primary { color: var(--pm-fabt); }
 .app-button.app-primary svg { color: inherit; }
+
+/* The costs and budget cards on the pricing screen were written for a dark page; keep their text readable on the theme's cards. */
+.pricing-screen .app-card .text-white,
+.pricing-screen .app-card .text-gray-100,
+.pricing-screen .app-card .text-gray-200,
+.pricing-screen .app-card .text-gray-300 { color: var(--app-text); }
+.pricing-screen .app-card .text-gray-400,
+.pricing-screen .app-card .text-gray-500 { color: var(--app-muted); }
+.pricing-screen .app-card [class*="bg-gray-900"] { background: var(--app-panel); }
+.pricing-screen .app-card [class*="border-gray-"] { border-color: var(--app-border); }
+.pricing-screen .app-card h1,
+.pricing-screen .app-card h2,
+.pricing-screen .app-card h3 { color: var(--app-text); }

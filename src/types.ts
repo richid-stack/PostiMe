@@ -1828,6 +1828,8 @@ export type CostSettings = {
   rates: CostRate[];
   extraLineItems?: CostLineItem[];
   invoiceNotes?: string;
+  /** Spending limit for the whole project. */
+  budget?: import('./utils/budget').ProjectBudget;
 };
 
 export type SubscriptionPlan = 'free' | 'pro';

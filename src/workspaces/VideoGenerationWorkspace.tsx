@@ -37,6 +37,7 @@ import {
 import { fileToBase64, getBase64FromUrl } from '../utils/helpers';
 import { LibraryAsset, useLibraryAssets } from '../hooks/useLibraryAssets';
 import { estimateGenerationCost, formatUnitSummary, formatUsd } from '../utils/generationPricing';
+import { budgetForGeneration, type ProjectBudget } from '../utils/budget';
 import { structurePromptForModel } from '../utils/modelPromptGuides';
 import { pickVideoModel } from '../utils/modelAutoSelect';
 import { getProductionFormat, type ProductionFormatId } from '../data/productionFormats';
@@ -53,6 +54,9 @@ interface VideoGenerationWorkspaceProps {
   currentProjectName?: string | null;
   currentProjectPath?: string | null;
   costRates?: CostRate[];
+  /** Project spending limit and what has been spent so far, in US dollars. */
+  budget?: ProjectBudget | null;
+  budgetSpentUsd?: number;
   billingMode?: 'hosted' | 'byok';
   onValidateHostedGeneration?: (opts: {
     provider: CostRate['provider'];
@@ -466,6 +470,8 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
   currentProjectName,
   currentProjectPath,
   costRates = [],
+  budget = null,
+  budgetSpentUsd = 0,
   billingMode = 'hosted',
   onValidateHostedGeneration,
   seedImage,
@@ -750,7 +756,11 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
     : supportsElements || supportsEndFrame || supportsMotionReference || supportsAudioInput || supportsStoryboardRefs
       ? 'Controls ready'
       : 'Optional';
-  const canStartGeneration = generationBlockers.length === 0 && !isGenerating;
+  const generationBudget = useMemo(
+    () => budgetForGeneration({ budget, spentUsd: budgetSpentUsd, estimate: generationCostEstimate, billingMode, money: formatUsd }),
+    [budget, budgetSpentUsd, generationCostEstimate, billingMode],
+  );
+  const canStartGeneration = generationBlockers.length === 0 && !isGenerating && !generationBudget.blocked;
 
   const referencePreviewUrl = useMemo(() => {
     if (referenceFile) return URL.createObjectURL(referenceFile);
@@ -846,6 +856,10 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
   }, [seedImage, onConsumeSeed]);
 
   const handleGenerate = async () => {
+    if (generationBudget.blocked) {
+      setStatus(generationBudget.line);
+      return;
+    }
     const parseKlingMultiPrompt = (value: string): Array<{ prompt: string; duration?: number }> => {
       const lines = (value || '')
         .split('\n')
@@ -2177,6 +2191,15 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
                       {' \u00b7 '}
                       {billingMode === 'byok' ? 'Your key' : 'Hosted'}
                     </span>
+                    {generationBudget.line && (
+                      <span
+                        className="generation-dock__cost block"
+                        data-testid="generation-budget"
+                        style={{ color: generationBudget.tone === 'over' ? 'var(--app-danger)' : generationBudget.tone === 'warn' ? '#b45309' : undefined }}
+                      >
+                        {generationBudget.line}
+                      </span>
+                    )}
                   </span>
                   <span className="generation-dock__chevron" aria-hidden="true">{dockOpen ? '\u2212' : '+'}</span>
                 </button>
@@ -2188,6 +2211,8 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
                   <SparklesIcon className="w-4 h-4" />
                   {isGenerating
                     ? 'Generating...'
+                    : generationBudget.blocked
+                      ? 'Over budget'
                     : generationBlockers.length > 0
                       ? `Complete ${generationBlockers.length} item${generationBlockers.length === 1 ? '' : 's'}`
                       : 'Generate video'}

@@ -55,6 +55,7 @@ import { LibraryAsset, useLibraryAssets } from '../hooks/useLibraryAssets';
 import { LensSelection } from '../components/LensSelection';
 import { CAMERA_PRESETS, LENS_PRESETS } from '../data/cameraData';
 import { estimateGenerationCost, formatUnitSummary, formatUsd } from '../utils/generationPricing';
+import { budgetForGeneration, type ProjectBudget } from '../utils/budget';
 import { formatSmartModelEta, routeSmartModel, type SmartModelCandidate, type SmartModelRoute } from '../utils/smartModelRouter';
 import { structurePromptForModel } from '../utils/modelPromptGuides';
 import { pickImageModel } from '../utils/modelAutoSelect';
@@ -97,6 +98,9 @@ interface ImageGenerationWorkspaceProps {
   currentProjectName?: string | null;
   currentProjectPath?: string | null;
   costRates?: CostRate[];
+  /** Project spending limit and what has been spent so far, in US dollars. */
+  budget?: ProjectBudget | null;
+  budgetSpentUsd?: number;
   billingMode?: 'hosted' | 'byok';
   onValidateHostedGeneration?: (opts: {
     provider: CostRate['provider'];
@@ -763,6 +767,8 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
   currentProjectName,
   currentProjectPath,
   costRates = [],
+  budget = null,
+  budgetSpentUsd = 0,
   billingMode = 'hosted',
   onValidateHostedGeneration,
   onAnimateImage,
@@ -1055,6 +1061,16 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
       units,
     });
   }, [modelId, imageSize, costRates]);
+  const generationBudget = useMemo(
+    () => budgetForGeneration({
+      budget: modelId === 'comfyui' ? null : budget,
+      spentUsd: budgetSpentUsd,
+      estimate: generationCostEstimate,
+      billingMode,
+      money: formatUsd,
+    }),
+    [budget, budgetSpentUsd, generationCostEstimate, billingMode, modelId],
+  );
   const generationCostDetail = useMemo(() => {
     if (modelId === 'comfyui') return 'Local ComfyUI generation is not billed by hosted credits.';
     if (!generationCostEstimate) return 'No price mapping found for the selected model.';
@@ -2233,6 +2249,10 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
   };
 
   const handleGenerate = async () => {
+    if (generationBudget.blocked) {
+      setStatus(generationBudget.line);
+      return;
+    }
     if (!finalPrompt.trim()) {
       setStatus('Add a prompt before generating.');
       return;
@@ -3226,6 +3246,15 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
                               ? `Estimated provider cost: ${formatUsd(generationCostEstimate.providerUsd)}`
                               : `Estimated cost: ${generationCostEstimate.credits} credits`}
                             {currentModelEta ? ` · ETA ${currentModelEta}` : ''}
+                            {generationBudget.line && (
+                              <div
+                                className="mt-1 text-xs"
+                                data-testid="generation-budget"
+                                style={{ color: generationBudget.tone === 'over' ? 'var(--app-danger)' : generationBudget.tone === 'warn' ? '#b45309' : undefined }}
+                              >
+                                {generationBudget.line}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -3235,10 +3264,10 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
                       <div className="flex flex-wrap items-center justify-between gap-3">
                       <button
                         onClick={handleGenerate}
-                        disabled={!readyForGeneration}
+                        disabled={!readyForGeneration || generationBudget.blocked}
                         className="app-button app-primary disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {activeJobs.length > 0 ? `Create Image (${activeJobs.length} running)` : 'Create Image'}
+                        {generationBudget.blocked ? 'Over budget' : activeJobs.length > 0 ? `Create Image (${activeJobs.length} running)` : 'Create Image'}
                       </button>
                       <div className="flex items-center gap-3 text-xs text-gray-400">
                         {modelId === 'comfyui' ? (

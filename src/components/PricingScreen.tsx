@@ -4,6 +4,7 @@ import { CostLineItem, CostRate, CostSettings, SubscriptionPlan, UsageLedger, Us
 import { LockIcon } from './icons';
 import { STRIPE_PLANS } from '../config/stripe';
 import { subscriptionService } from '../services/subscriptionService';
+import { checkBudget, describeBudget, normalizeBudget, spendFromLedger } from '../utils/budget';
 
 interface PricingScreenProps {
     onSelectPlan: (plan: SubscriptionPlan) => void;
@@ -124,6 +125,11 @@ const PricingScreen: React.FC<PricingScreenProps> = ({
     const extrasTotal = extraItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
     const softwareTotal = settings.includeSoftwareFee ? settings.softwareFee : 0;
     const grandTotal = summary.usageTotal + extrasTotal + softwareTotal;
+    const budget = normalizeBudget(settings.budget);
+    const budgetSpentUsd = spendFromLedger(entries, settings.rates);
+    const budgetCheck = checkBudget(budget, budgetSpentUsd);
+    const updateBudget = (updates: Partial<typeof budget>) => updateSettings({ budget: normalizeBudget({ ...budget, ...updates }) });
+    const [budgetDraft, setBudgetDraft] = useState<string | null>(null);
     const canEdit = activeRole === 'director';
     const canSeeDetails = canView || canEdit;
 
@@ -272,7 +278,7 @@ const PricingScreen: React.FC<PricingScreenProps> = ({
     };
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-start relative overflow-x-hidden overflow-y-auto">
+        <div className="pricing-screen min-h-screen bg-gray-900 text-white py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-start relative overflow-x-hidden overflow-y-auto">
             {/* Background Ambience */}
             <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-900/30 rounded-full blur-3xl"></div>
             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-900/30 rounded-full blur-3xl"></div>
@@ -389,6 +395,54 @@ const PricingScreen: React.FC<PricingScreenProps> = ({
 
                     {canSeeDetails && (
                         <>
+                            <section className="mt-4 rounded-lg border border-gray-700 bg-gray-900/60 p-4" aria-label="Project budget" data-testid="budget-card">
+                                <div className="flex flex-wrap items-end justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold">Budget</h3>
+                                        <p className="text-xs text-gray-400">A limit for AI generation in this project. Counts usage at the rates below, not the software fee or extra lines.</p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-300">
+                                        <label className="flex items-center gap-2">Limit ({settings.currency})
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                step={1}
+                                                className="app-input w-28 text-xs"
+                                                aria-label="Budget limit"
+                                                placeholder="No limit"
+                                                value={budgetDraft ?? (budget.limitUsd === null ? '' : String(Math.round(toDisplayCurrency(budget.limitUsd) * 100) / 100))}
+                                                onChange={(e) => setBudgetDraft(e.target.value)}
+                                                onBlur={() => {
+                                                    if (budgetDraft === null) return;
+                                                    const typed = Number(budgetDraft);
+                                                    updateBudget({ limitUsd: budgetDraft.trim() !== '' && Number.isFinite(typed) && typed > 0 ? fromDisplayCurrency(typed) : null });
+                                                    setBudgetDraft(null);
+                                                }}
+                                            />
+                                        </label>
+                                        <label className="flex items-center gap-2">When a generation would pass it
+                                            <select className="app-select text-xs" aria-label="Budget enforcement" value={budget.mode} onChange={(e) => updateBudget({ mode: e.target.value === 'block' ? 'block' : 'warn' })}>
+                                                <option value="warn">Warn me</option>
+                                                <option value="block">Stop it</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+                                {budgetCheck.state !== 'none' && budgetCheck.limitUsd !== null && (
+                                    <div className="mt-3">
+                                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700" role="progressbar" aria-label="Budget used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(budgetCheck.percentUsed))}>
+                                            <div
+                                                data-testid="budget-meter"
+                                                className="h-full rounded-full"
+                                                style={{ width: `${Math.min(100, budgetCheck.percentUsed)}%`, background: budgetCheck.state === 'over' ? '#ef4444' : budgetCheck.state === 'warn' ? '#f59e0b' : 'var(--app-accent)' }}
+                                            />
+                                        </div>
+                                        <p className="mt-2 text-xs text-gray-300" data-testid="budget-text">
+                                            Spent {formatCurrency(toDisplayCurrency(budgetCheck.spentUsd), settings.currency)}. {describeBudget(budgetCheck, budget.mode, (usd) => formatCurrency(toDisplayCurrency(usd), settings.currency))}
+                                        </p>
+                                    </div>
+                                )}
+                            </section>
                             <div className="mt-4 overflow-x-auto">
                                 <table className="w-full text-xs text-gray-300">
                                     <caption className="sr-only">Usage cost breakdown by provider and model</caption>

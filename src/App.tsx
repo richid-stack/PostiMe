@@ -133,6 +133,7 @@ import {
 } from './services/studioAgentTaskService';
 import { DEFAULT_SHORTCUTS, SHORTCUT_DEFINITIONS, matchesShortcut } from './utils/shortcuts';
 import { estimateGenerationCost, formatUnitSummary } from './utils/generationPricing';
+import { checkBudget, describeBudget, normalizeBudget, spendFromLedger, type BudgetCheck } from './utils/budget';
 import {
     generateVideoWithVeo,
     generateSpeechWithTTS,
@@ -665,6 +666,7 @@ const normalizeCostSettings = (value?: CostSettings | null): CostSettings => ({
     rates: value?.rates && value.rates.length > 0 ? value.rates : DEFAULT_COST_SETTINGS.rates,
     extraLineItems: value?.extraLineItems ?? [],
     invoiceNotes: value?.invoiceNotes ?? '',
+    budget: normalizeBudget(value?.budget),
 });
 
 type AutosaveSettings = {
@@ -7464,6 +7466,23 @@ function App() {
         if (chars <= 0) return 0.2;
         return Math.max(0.2, Math.min(8, chars / 900));
     };
+    const budgetSpentUsd = useMemo(() => spendFromLedger(usageLedger.entries, effectiveCostRates), [usageLedger.entries, effectiveCostRates]);
+    const budgetFor = (pricing: PricingResult): { check: BudgetCheck; mode: 'warn' | 'block' } | null => {
+        const budget = normalizeBudget(costSettings.budget);
+        if (budget.limitUsd === null) return null;
+        const pendingUsd = pricing.mode === 'byok' ? (pricing.byokUsd ?? 0) : (pricing.hostedUsd ?? 0);
+        return { check: checkBudget(budget, budgetSpentUsd, pendingUsd), mode: budget.mode };
+    };
+    const budgetNote = (pricing: PricingResult) => {
+        const result = budgetFor(pricing);
+        if (!result) return null;
+        const usd = (value: number) => `$${value.toFixed(value >= 1 ? 2 : 3)}`;
+        return {
+            text: describeBudget(result.check, result.mode, usd),
+            tone: (result.check.wouldExceed || result.check.state === 'over' ? 'over' : result.check.state === 'warn' ? 'warn' : 'ok') as 'ok' | 'warn' | 'over',
+            blocked: result.check.blocked,
+        };
+    };
     const buildModalPricing = (opts: {
         provider: CostRate['provider'];
         kind: CostRate['kind'];
@@ -8696,6 +8715,8 @@ function App() {
                     currentProjectName={projectName || storyBible.title}
                     currentProjectPath={projectPath}
                     costRates={effectiveCostRates}
+                    budget={costSettings.budget ?? null}
+                    budgetSpentUsd={budgetSpentUsd}
                     billingMode={isByokMode ? 'byok' : 'hosted'}
                     onValidateHostedGeneration={validateHostedGeneration}
                     onAnimateImage={handleAnimateImage}
@@ -8713,6 +8734,8 @@ function App() {
                     currentProjectName={projectName || storyBible.title}
                     currentProjectPath={projectPath}
                     costRates={effectiveCostRates}
+                    budget={costSettings.budget ?? null}
+                    budgetSpentUsd={budgetSpentUsd}
                     billingMode={isByokMode ? 'byok' : 'hosted'}
                     onValidateHostedGeneration={validateHostedGeneration}
                     seedImage={videoGenSeed}
@@ -8894,6 +8917,7 @@ function App() {
             icon: item.icon,
             run: () => setActiveWorkspace(item.id),
         })),
+        { id: 'open-costs', title: 'Open costs and budget', hint: 'Usage so far and the project budget', group: 'App', keywords: ['pricing', 'usage', 'spend', 'limit', 'credits', 'money'], run: () => setShowPricing(true) },
         { id: 'open-settings', title: 'Open settings', hint: 'Accent colour, theme, keys and more', group: 'App', shortcut: '⌘,', keywords: ['preferences', 'accent', 'theme', 'api key'], run: () => setShowSettings(true) },
         { id: 'toggle-sidebar', title: 'Show or hide the sidebar', group: 'App', shortcut: '⌘\\', run: () => setSidebarCollapsed((value) => !value) },
         { id: 'toggle-activity', title: 'Show or hide activity', hint: 'Running tasks and agent approvals', group: 'App', keywords: ['tasks', 'agent'], run: () => setActivityDrawerOpen((value) => !value) },
@@ -9246,7 +9270,12 @@ function App() {
                 isOpen={!!modalConfig}
                 config={modalConfig}
                 onClose={() => setModalConfig(null)}
+                budgetNote={budgetNote}
                 onSubmit={async (values, pricing) => {
+                    if (pricing && budgetFor(pricing)?.check.blocked) {
+                        alert('This would pass the project budget. Raise the budget under Pricing & Usage in your profile menu, or choose something cheaper.');
+                        return;
+                    }
                     if (
                         pricing &&
                         pricing.mode !== 'byok' &&
