@@ -8896,7 +8896,7 @@ function App() {
                     onOpenSettings={() => setShowSettings(true)}
                 />
             );
-            case 'EXPORT': return <ExportWorkspace mediaItems={mediaItems} timelineClips={timelineClips} timelineTracks={timelineTracks} projectPath={projectPath} />;
+            case 'EXPORT': return <ExportWorkspace mediaItems={mediaItems} timelineClips={timelineClips} timelineTracks={timelineTracks} projectPath={projectPath} onSetMediaOrigin={(mediaId, origin) => setMediaItems((prev) => prev.map((item) => (item.id === mediaId ? { ...item, aiOrigin: origin ?? undefined } : item)))} />;
             default: return <ScriptWorkspace />;
         }
     };

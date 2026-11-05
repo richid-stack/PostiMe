@@ -137,6 +137,8 @@ export type MediaItem = {
   imageVersions?: string[];
   selectedVersionIndex?: number;
   analysisNotes?: string[];
+  /** The person's own call on whether this was made with AI, overriding what the app can tell. */
+  aiOrigin?: 'ai' | 'not-ai';
 };
 
 export type DesignCanvasPreset = '16:9' | '9:16' | '1:1' | '4:5';

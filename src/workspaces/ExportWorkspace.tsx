@@ -28,6 +28,7 @@ import {
 import { buildVfxHandoffManifest } from '../utils/vfxHandoffManifest';
 import { prepareProjectForHqExport } from '../utils/hqExportPrep';
 import MultiSizeExport from '../components/MultiSizeExport';
+import AiDisclosurePanel from '../components/AiDisclosurePanel';
 import {
     buildNatronPythonScriptFromVfxHandoffManifest,
     buildNukeScriptFromVfxHandoffManifest,
@@ -38,11 +39,12 @@ interface ExportWorkspaceProps {
     timelineClips: TimelineClip[];
     timelineTracks: TimelineTrack[];
     projectPath?: string | null;
+    onSetMediaOrigin?: (mediaId: string, origin: 'ai' | 'not-ai' | null) => void;
 }
 
 type ExportStatus = 'IDLE' | 'RENDERING' | 'DONE' | 'ERROR';
 
-const ExportWorkspace: React.FC<ExportWorkspaceProps> = ({ mediaItems, timelineClips, timelineTracks, projectPath }) => {
+const ExportWorkspace: React.FC<ExportWorkspaceProps> = ({ mediaItems, timelineClips, timelineTracks, projectPath, onSetMediaOrigin }) => {
     const [status, setStatus] = useState<ExportStatus>('IDLE');
     const [progress, setProgress] = useState(0);
     const [settings, setSettings] = useState({
@@ -801,6 +803,14 @@ const ExportWorkspace: React.FC<ExportWorkspaceProps> = ({ mediaItems, timelineC
                 <section className={`app-panel p-8 text-center ${status === 'RENDERING' ? 'min-h-[70vh] flex items-center justify-center' : ''}`}>
                     {renderContent()}
                 </section>
+                {status === 'IDLE' && (
+                    <AiDisclosurePanel
+                        mediaItems={mediaItems}
+                        timelineClips={timelineClips}
+                        onSetOrigin={onSetMediaOrigin}
+                        fileBaseName={sanitizeExportFilename(settings.filename, 'timeline')}
+                    />
+                )}
                 {status === 'IDLE' && (
                     <MultiSizeExport
                         baseSettings={normalizeExportSettings({ ...settings, useFfmpeg: true })}
