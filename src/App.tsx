@@ -133,6 +133,9 @@ import {
 } from './services/studioAgentTaskService';
 import { DEFAULT_SHORTCUTS, SHORTCUT_DEFINITIONS, matchesShortcut } from './utils/shortcuts';
 import { estimateGenerationCost, formatUnitSummary } from './utils/generationPricing';
+import { useRestorePoints } from './hooks/useRestorePoints';
+import RestorePointsModal from './components/RestorePointsModal';
+import type { RestorePoint } from './utils/restorePoints';
 import { checkBudget, describeBudget, normalizeBudget, spendFromLedger, type BudgetCheck } from './utils/budget';
 import {
     generateVideoWithVeo,
@@ -7638,6 +7641,15 @@ function App() {
 
     // --- Render ---
 
+    const [restoreOpen, setRestoreOpen] = useState(false);
+    const restore = useRestorePoints({ projectPath, storeKey: projectPath || projectName || 'untitled', clips: timelineClips, tracks: timelineTracks });
+    const handleRestorePoint = async (point: RestorePoint) => {
+        // Keep what is on the timeline now, so the restore can itself be undone by restoring that.
+        if (timelineClips.length > 0) await restore.capture('before-restore', 'Before going back to an earlier version');
+        setTimelineTracks(point.tracks.length > 0 ? point.tracks : INITIAL_TRACKS);
+        setTimelineClips(point.clips);
+        setRestoreOpen(false);
+    };
     if (!user) {
         if (isElectron) {
             return <AuthScreen onLogin={handleLogin} />;
@@ -7677,6 +7689,7 @@ function App() {
             trimMode: editTrimMode,
             onAddMedia: handleAddMedia,
             onRecordVoiceover: handleRecordVoiceover,
+            onOpenRestorePoints: () => setRestoreOpen(true),
             brandKit,
             onChangeBrandKit: setBrandKit,
             onApplyBrand: handleApplyBrand,
@@ -8909,6 +8922,7 @@ function App() {
         showRequests: !isDirector,
     });
     const paletteCommands: PaletteCommand[] = [
+        { id: 'restore-points', title: 'Restore points', hint: 'Go back to an earlier version of your edit', group: 'App', keywords: ['history', 'snapshot', 'version', 'backup', 'undo', 'revert'], run: () => setRestoreOpen(true) },
         ...workspaceNav.items.map((item): PaletteCommand => ({
             id: `go-${item.id}`,
             title: item.name,
@@ -9222,6 +9236,20 @@ function App() {
                 uiMode={uiMode}
                 onSelectUIMode={setUiMode}
             />
+
+            {(!showOnboarding && restoreOpen) && (
+                <RestorePointsModal
+                    points={restore.points}
+                    currentClips={timelineClips}
+                    mediaItems={mediaItems}
+                    ready={restore.ready}
+                    saveFailed={restore.saveFailed}
+                    onSave={async (label) => { await restore.capture('manual', label); }}
+                    onRestore={handleRestorePoint}
+                    onDelete={(id) => { void restore.remove(id); }}
+                    onClose={() => setRestoreOpen(false)}
+                />
+            )}
 
             {(!showOnboarding && paletteOpen) && (
                 <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
