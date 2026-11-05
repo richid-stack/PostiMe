@@ -136,6 +136,8 @@ import { estimateGenerationCost, formatUnitSummary } from './utils/generationPri
 import { buildRampSegments, totalRampLength, type RampPresetId } from './utils/speedRamp';
 import { useRestorePoints } from './hooks/useRestorePoints';
 import RestorePointsModal from './components/RestorePointsModal';
+import AnimaticModal from './components/AnimaticModal';
+import type { AnimaticBeat } from './utils/animatic';
 import type { RestorePoint } from './utils/restorePoints';
 import { checkBudget, describeBudget, normalizeBudget, spendFromLedger, type BudgetCheck } from './utils/budget';
 import {
@@ -5270,6 +5272,70 @@ function App() {
         setTimelineClips([...shifted, ...pieces]);
     };
 
+    const handleBuildAnimatic = (beats: AnimaticBeat[]) => {
+        const videoTrack = pickTimelineTrack('video');
+        const audioTrack = beats.some((b) => b.audioUrl) ? pickTimelineTrack('audio') : null;
+        if (!videoTrack) {
+            alert('There is no unlocked video track to build the cut on.');
+            return;
+        }
+        if (beats.some((b) => b.audioUrl) && !audioTrack) {
+            alert('There is no unlocked audio track for the voiceover, so the cut is built without it.');
+        }
+        const stamp = Date.now();
+        const from = timelineClips.filter((c) => c.trackId === videoTrack.id).reduce((max, c) => Math.max(max, c.end), 0);
+        let cursor = from;
+        const newMedia: MediaItem[] = [];
+        const newClips: TimelineClip[] = [];
+        beats.forEach((beat, index) => {
+            const mediaId = `animatic-${stamp}-${index}`;
+            const start = cursor;
+            cursor += beat.seconds;
+            newMedia.push({
+                id: mediaId,
+                name: beat.label,
+                type: beat.kind,
+                url: beat.url,
+                source: 'generated',
+                duration: beat.kind === 'video' ? Math.max(beat.seconds, MIN_TIMELINE_CLIP_DURATION) : beat.seconds,
+                generatedBy: 'Storyboard',
+                prompt: beat.text || undefined,
+            });
+            newClips.push(normalizeClipTiming({
+                id: `clip-${stamp}-v${index}`,
+                mediaId,
+                trackId: videoTrack.id,
+                start,
+                end: start + beat.seconds,
+                duration: beat.seconds,
+                speed: 1,
+                sourceIn: 0,
+                sourceOut: beat.seconds,
+                effect: null,
+            }));
+            if (beat.audioUrl && audioTrack) {
+                const audioLength = Math.min(beat.audioSeconds ?? beat.seconds, beat.seconds);
+                const audioId = `animatic-vo-${stamp}-${index}`;
+                newMedia.push({ id: audioId, name: `${beat.label} voiceover`, type: 'audio', url: beat.audioUrl, source: 'generated', duration: beat.audioSeconds ?? beat.seconds, generatedBy: 'Storyboard voiceover' });
+                newClips.push(normalizeClipTiming({
+                    id: `clip-${stamp}-a${index}`,
+                    mediaId: audioId,
+                    trackId: audioTrack.id,
+                    start,
+                    end: start + audioLength,
+                    duration: audioLength,
+                    speed: 1,
+                    sourceIn: 0,
+                    sourceOut: audioLength,
+                    effect: null,
+                }));
+            }
+        });
+        setMediaItems((prev) => [...prev, ...newMedia]);
+        setTimelineClips([...timelineClips, ...newClips]);
+        setAnimaticOpen(false);
+    };
+
     const handleSplitClip = (clipId: string, splitAt: number) => {
         const clip = timelineClips.find(c => c.id === clipId);
         if (!clip) return;
@@ -7680,6 +7746,7 @@ function App() {
     // --- Render ---
 
     const [restoreOpen, setRestoreOpen] = useState(false);
+    const [animaticOpen, setAnimaticOpen] = useState(false);
     const restore = useRestorePoints({ projectPath, storeKey: projectPath || projectName || 'untitled', clips: timelineClips, tracks: timelineTracks });
     const handleRestorePoint = async (point: RestorePoint) => {
         // Keep what is on the timeline now, so the restore can itself be undone by restoring that.
@@ -7728,6 +7795,7 @@ function App() {
             onAddMedia: handleAddMedia,
             onRecordVoiceover: handleRecordVoiceover,
             onOpenRestorePoints: () => setRestoreOpen(true),
+            onOpenAnimatic: () => setAnimaticOpen(true),
             brandKit,
             onChangeBrandKit: setBrandKit,
             onApplyBrand: handleApplyBrand,
@@ -8961,6 +9029,7 @@ function App() {
         showRequests: !isDirector,
     });
     const paletteCommands: PaletteCommand[] = [
+        { id: 'build-animatic', title: 'Build animatic from storyboard', hint: 'Put your shots on the timeline, timed by their voiceover', group: 'App', keywords: ['storyboard', 'shots', 'timing', 'previs', 'rough cut', 'temp'], run: () => setAnimaticOpen(true) },
         { id: 'restore-points', title: 'Restore points', hint: 'Go back to an earlier version of your edit', group: 'App', keywords: ['history', 'snapshot', 'version', 'backup', 'undo', 'revert'], run: () => setRestoreOpen(true) },
         ...workspaceNav.items.map((item): PaletteCommand => ({
             id: `go-${item.id}`,
@@ -9275,6 +9344,15 @@ function App() {
                 uiMode={uiMode}
                 onSelectUIMode={setUiMode}
             />
+
+            {(!showOnboarding && animaticOpen) && (
+                <AnimaticModal
+                    shots={shotPrompts}
+                    startsAfterSeconds={timelineClips.reduce((max, c) => Math.max(max, c.end), 0)}
+                    onBuild={handleBuildAnimatic}
+                    onClose={() => setAnimaticOpen(false)}
+                />
+            )}
 
             {(!showOnboarding && restoreOpen) && (
                 <RestorePointsModal

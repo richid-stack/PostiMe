@@ -149,6 +149,7 @@ interface EditWorkspaceProps {
     /** A finished voiceover take, to be laid on an audio track starting at `startTime` seconds. */
     onRecordVoiceover?: (file: File, startTime: number) => void | Promise<void>;
     onOpenRestorePoints?: () => void;
+    onOpenAnimatic?: () => void;
     brandKit?: BrandKit | null;
     onChangeBrandKit?: (kit: BrandKit | null) => void;
     onApplyBrand?: (scope: 'selected' | 'all') => void;
@@ -1465,6 +1466,11 @@ const EditWorkspace: React.FC<EditWorkspaceProps> = (props) => {
                 onClearMarks={() => { setPgmIn(null); setPgmOut(null); }}
                 trailing={(
                     <div className="edit-transport__actions">
+                        {props.onOpenAnimatic && (
+                            <button onClick={props.onOpenAnimatic} className="edit-text-btn edit-text-btn--outline" title="Build a timed rough cut from your storyboard shots" aria-label="Build animatic">
+                                Animatic
+                            </button>
+                        )}
                         {props.onOpenRestorePoints && (
                             <button onClick={props.onOpenRestorePoints} className="edit-text-btn edit-text-btn--outline" title="Go back to an earlier version of this edit" aria-label="Restore points">
                                 Restore points
