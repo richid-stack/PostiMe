@@ -133,6 +133,7 @@ import {
 } from './services/studioAgentTaskService';
 import { DEFAULT_SHORTCUTS, SHORTCUT_DEFINITIONS, matchesShortcut } from './utils/shortcuts';
 import { estimateGenerationCost, formatUnitSummary } from './utils/generationPricing';
+import { buildRampSegments, totalRampLength, type RampPresetId } from './utils/speedRamp';
 import { useRestorePoints } from './hooks/useRestorePoints';
 import RestorePointsModal from './components/RestorePointsModal';
 import type { RestorePoint } from './utils/restorePoints';
@@ -5232,6 +5233,43 @@ function App() {
         setTimelineClips(timelineClips.map(c => c.id === clipId ? { ...c, chromaKey } : c));
     };
 
+    const handleApplySpeedRamp = (clipId: string, presetId: RampPresetId) => {
+        const clip = timelineClips.find((c) => c.id === clipId);
+        if (!clip || clip.textConfig) return;
+        const sourceIn = clip.sourceIn ?? 0;
+        const sourceOut = clip.sourceOut ?? (sourceIn + clip.duration);
+        const segments = buildRampSegments({ sourceIn, sourceOut, preset: presetId });
+        if (segments.length === 0) return;
+        const oldLength = clip.end - clip.start;
+        const newLength = totalRampLength(segments);
+        const stamp = Date.now();
+        let cursor = clip.start;
+        const pieces = segments.map((segment, index) => {
+            const last = index === segments.length - 1;
+            const start = cursor;
+            cursor = last ? clip.start + newLength : cursor + segment.length;
+            const { keyframes: _keyframes, kenBurns: _kenBurns, ...rest } = clip as TimelineClip & { keyframes?: unknown; kenBurns?: unknown };
+            // Only the first piece keeps motion keyframes, which are timed from the start of a clip; a transition belongs on the last.
+            const base: TimelineClip = index === 0 ? clip : (rest as TimelineClip);
+            return normalizeClipTiming({
+                ...base,
+                id: index === 0 ? clip.id : `clip-${stamp}-${index}`,
+                start,
+                end: cursor,
+                speed: segment.speed,
+                duration: segment.sourceOut - segment.sourceIn,
+                sourceIn: segment.sourceIn,
+                sourceOut: segment.sourceOut,
+                transitionOut: last ? clip.transitionOut : undefined,
+            });
+        });
+        const delta = newLength - oldLength;
+        const shifted = timelineClips
+            .filter((c) => c.id !== clipId)
+            .map((c) => (c.trackId === clip.trackId && c.start >= clip.end - 0.001 ? normalizeClipTiming({ ...c, start: c.start + delta, end: c.end + delta }) : c));
+        setTimelineClips([...shifted, ...pieces]);
+    };
+
     const handleSplitClip = (clipId: string, splitAt: number) => {
         const clip = timelineClips.find(c => c.id === clipId);
         if (!clip) return;
@@ -8484,6 +8522,7 @@ function App() {
             onPlayheadUpdate: setPlayheadPosition,
             onSnappingToggle: () => setIsSnappingEnabled(!isSnappingEnabled),
             onSplitClip: handleSplitClip,
+            onApplySpeedRamp: handleApplySpeedRamp,
             onUpdateClipTransition: updateClipTransition,
             onUpdateTextConfig: updateTextConfig,
             onUpdateClipTransform: updateClipTransform,

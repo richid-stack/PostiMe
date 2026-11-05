@@ -1,4 +1,5 @@
 import { DEFAULT_CHROMA_KEY } from '../utils/chromaKey';
+import { RAMP_PRESETS, type RampPresetId } from '../utils/speedRamp';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ClipEffectLayer, ClipFilters, LutId, TimelineClip, MediaItem, EffectType, TransitionType, KenBurnsConfig, Keyframe } from '../types';
 import { FunctionDeclaration } from '@google/genai';
@@ -18,6 +19,8 @@ interface InspectorPanelProps {
     onUpdateClipTransition: (clipId: string, transition: { type: TransitionType; duration: number } | null) => void;
     onUpdateTextConfig: (clipId: string, textConfig: TimelineClip['textConfig']) => void;
     onUpdateClipSpeed: (clipId: string, newSpeed: number) => void;
+    /** Cuts the clip into pieces at different speeds that follow a ramp, and moves later clips on the track to fit. */
+    onApplySpeedRamp?: (clipId: string, preset: RampPresetId) => void;
     onUpdateClipTransform: (clipId: string, transform: TimelineClip['transform']) => void;
     onUpdateChromaKeyConfig: (clipId: string, chromaKeyConfig: TimelineClip['chromaKey']) => void;
     apiKeyReady: boolean;
@@ -481,6 +484,18 @@ const InspectorPanel: React.FC<InspectorPanelProps> = (props) => {
                         </div>
                         <div className="pk-card">
                             <SliderRow id="speed" label="Speed" value={selectedClip.speed} display={`${selectedClip.speed.toFixed(2)}×`} min={0.25} max={4} step={0.05} onChange={handleSpeedChange} onReset={() => handleSpeedChange(1)} />
+                            {selectedMedia.type === 'video' && props.onApplySpeedRamp && (
+                                <div className="pk-field" data-testid="speed-ramps">
+                                    <span>Speed ramp</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                                        {RAMP_PRESETS.map((preset) => (
+                                            <button key={preset.id} type="button" className="edit-text-btn edit-text-btn--outline" title={`${preset.note}. Cuts the clip into short pieces; undo puts it back.`} onClick={() => props.onApplySpeedRamp?.(selectedClip.id, preset.id)}>
+                                                {preset.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             <label className="pk-field">
                                 <span>Blend</span>
                                 <select id="blendMode" value={selectedClip.blendMode || 'normal'} onChange={handleBlendModeChange}>

@@ -268,3 +268,49 @@ test('HQ export fills a vertical frame from a wide picture, around the chosen fo
     is(at(withLogo, 90, 120), [255, 0, 0], 'below the logo the filled picture shows');
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('HQ export plays a speed ramp: the piece lengths add up and each moment shows the right part of the source', { skip: !ffmpegPath && 'no FFmpeg binary' }, async () => {
+    const { buildRampSegments, totalRampLength } = await import('../src/utils/speedRamp.ts');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'postime-ramp-'));
+    // The red level of every frame is the source time: 0 at the start, 255 at 10 seconds.
+    run(['-f', 'lavfi', '-i', "color=c=black:s=160x90:r=30:d=10,geq=r='255*T/10':g=0:b=0", '-f', 'lavfi', '-i', 'sine=frequency=300:sample_rate=44100:duration=10', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', '-crf', '12', '-c:a', 'aac', path.join(dir, 'ramp.mp4')]);
+
+    const segments = buildRampSegments({ sourceIn: 0, sourceOut: 10, preset: 'slow-hit' });
+    const total = totalRampLength(segments);
+    let cursor = 0;
+    const timelineClips = segments.map((segment, index) => {
+        const start = cursor;
+        cursor += segment.length;
+        return { id: `r${index}`, mediaId: 'src', trackId: 'v1', start, end: cursor, duration: segment.sourceOut - segment.sourceIn, speed: segment.speed, sourceIn: segment.sourceIn, sourceOut: segment.sourceOut, effect: null, volume: 1 };
+    });
+    const { renderTimeline } = require('./ffmpeg-handler.js');
+    const output = await renderTimeline(dir, {
+        mediaItems: [{ id: 'src', type: 'video', path: 'ramp.mp4' }],
+        timelineTracks: [{ id: 'v1', type: 'video', isMuted: false }],
+        timelineClips,
+    }, { width: 160, height: 90, fps: 30, bitrateKbps: 4000, videoCodec: 'h264', container: 'mp4', filename: 'ramp-out.mp4', gpuAcceleration: 'off' });
+
+    const probe = spawnSync(ffmpegPath, ['-hide_banner', '-i', output], { encoding: 'utf8' });
+    const match = String(probe.stderr).match(/Duration: (\d+):(\d+):([\d.]+)/);
+    const length = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+    assert.ok(Math.abs(length - total) < 0.25, `output is ${length}s, the pieces add up to ${total}s`);
+    assert.ok(total > 12, 'a slow-mo hit makes the clip longer');
+    assert.ok(streamTypes(output).audio, 'sound is kept');
+
+    const sourceTimeAt = (outputSeconds) => {
+        let elapsed = 0;
+        for (const segment of segments) {
+            if (outputSeconds <= elapsed + segment.length) return segment.sourceIn + (outputSeconds - elapsed) * segment.speed;
+            elapsed += segment.length;
+        }
+        return 10;
+    };
+    for (const fraction of [0.1, 0.35, 0.5, 0.7, 0.9]) {
+        const at = total * fraction;
+        const [red] = pixelAt(output, at, 80, 45, 160, 90);
+        const shown = (red / 255) * 10;
+        const expected = sourceTimeAt(at);
+        assert.ok(Math.abs(shown - expected) < 0.35, `at ${at.toFixed(2)}s the picture is from source ${shown.toFixed(2)}s, expected ${expected.toFixed(2)}s`);
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+});

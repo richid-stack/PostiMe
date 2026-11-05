@@ -86,6 +86,7 @@ interface EditWorkspaceProps {
     onSnappingToggle: () => void;
     onSplitClip: (clipId: string, splitAt: number) => void;
     onUpdateClipSpeed: (clipId: string, newSpeed: number) => void;
+    onApplySpeedRamp?: (clipId: string, preset: import('../utils/speedRamp').RampPresetId) => void;
     apiKeyReady: boolean;
     references: ReferenceItem[];
     setReferences: React.Dispatch<React.SetStateAction<ReferenceItem[]>>;
