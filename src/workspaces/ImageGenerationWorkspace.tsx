@@ -56,6 +56,8 @@ import { LensSelection } from '../components/LensSelection';
 import { CAMERA_PRESETS, LENS_PRESETS } from '../data/cameraData';
 import { estimateGenerationCost, formatUnitSummary, formatUsd } from '../utils/generationPricing';
 import { budgetForGeneration, type ProjectBudget } from '../utils/budget';
+import { addToHistory, pickForCompare, togglePin, trimHistory } from '../utils/generationCompare';
+import GenerationCompare, { type CompareSide } from '../components/GenerationCompare';
 import { formatSmartModelEta, routeSmartModel, type SmartModelCandidate, type SmartModelRoute } from '../utils/smartModelRouter';
 import { structurePromptForModel } from '../utils/modelPromptGuides';
 import { pickImageModel } from '../utils/modelAutoSelect';
@@ -507,6 +509,7 @@ Return a concise Markdown report with:
 - Fix suggestions (prompt or post tweaks)
 Keep it short and practical.`;
 const HISTORY_STORAGE_PREFIX = 'image_generation_history_v1';
+const HISTORY_LIMIT = 20;
 const IMAGE_WORKSPACE_UI_PREFS_KEY = 'image_workspace_ui_prefs_v1';
 const COMFY_STORAGE_KEY = 'comfyui_config_v1';
 const COMFY_PRESETS_KEY = 'comfyui_presets_v1';
@@ -692,6 +695,8 @@ type GenerationHistoryEntry = {
   lensPresetId: string;
   customStyle: string;
   references: Array<{ url: string; name?: string; type?: string }>;
+  /** Pinned results are kept when older ones are dropped. */
+  pinned?: boolean;
 };
 
 type GenerationJob = {
@@ -1269,7 +1274,7 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
       }
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        setGenerationHistory(parsed.slice(0, 20));
+        setGenerationHistory(trimHistory(parsed, HISTORY_LIMIT));
       } else {
         setGenerationHistory([]);
       }
@@ -2720,8 +2725,7 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
       const itemWithMeta = { ...item, generatedBy: modelLabel, prompt: shapedPrompt };
       onAddGeneratedMedia(itemWithMeta);
       setGenerated((prev) => [itemWithMeta, ...prev].slice(0, 12));
-      setGenerationHistory((prev) => [
-        {
+      setGenerationHistory((prev) => addToHistory(prev, {
           id: itemWithMeta.id,
           createdAt: new Date().toISOString(),
           url: itemWithMeta.url,
@@ -2738,9 +2742,7 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
           lensPresetId,
           customStyle,
           references: mergedLimited.map((ref) => ({ url: ref.url, name: ref.id })),
-        },
-        ...prev,
-      ].slice(0, 20));
+        }, HISTORY_LIMIT));
       const aspectNote =
         modelId === 'imagen' && imagenAspectRatio !== effectiveAspectRatio
           ? ' Imagen uses 16:9 for custom ratios.'
@@ -2763,6 +2765,35 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
       setActiveJobs((prev) => prev.map((job) => (job.id === jobId ? { ...job, status: 'error' } : job)));
     }
   };
+
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const historySettings = (entry: GenerationHistoryEntry): Array<[string, string]> => [
+    ['Model', entry.modelLabel || entry.modelId],
+    ['Aspect ratio', entry.aspectRatio],
+    ['Size', entry.imageSize],
+    ['Style', STYLE_PRESETS.find((p) => p.id === entry.selectedStyleId)?.label || entry.selectedStyleId || ''],
+    ['Shot type', entry.selectedShotTypeId || ''],
+    ['Lighting', entry.selectedLightingId || ''],
+    ['Camera', entry.cameraPresetId || ''],
+    ['Lens', entry.lensPresetId || ''],
+    ['Extra notes', entry.customStyle || ''],
+    ['Avoid', entry.negativePrompt || ''],
+    ['References', entry.references.length ? String(entry.references.length) : ''],
+  ];
+  const compareSides = useMemo<[CompareSide, CompareSide] | null>(() => {
+    const pair = compareIds.map((id) => generationHistory.find((entry) => entry.id === id));
+    if (pair.length !== 2 || !pair[0] || !pair[1]) return null;
+    const side = (entry: GenerationHistoryEntry): CompareSide => ({
+      id: entry.id,
+      url: entry.url,
+      kind: 'image',
+      title: new Date(entry.createdAt).toLocaleString(),
+      prompt: entry.prompt,
+      settings: historySettings(entry),
+    });
+    return [side(pair[0]), side(pair[1])];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareIds, generationHistory]);
 
   const handleReuse = (entry: GenerationHistoryEntry) => {
     setPrompt(entry.prompt);
@@ -4890,14 +4921,42 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
 
                 <section className="app-panel p-5 space-y-3">
                   <div className="text-xs   text-gray-400">History</div>
+                  {compareSides && (
+                    <GenerationCompare
+                      a={compareSides[0]}
+                      b={compareSides[1]}
+                      onClose={() => setCompareIds([])}
+                      onFork={(id) => {
+                        const entry = generationHistory.find((e) => e.id === id);
+                        if (entry) handleReuse(entry);
+                      }}
+                    />
+                  )}
+                  {generationHistory.length > 1 && compareIds.length < 2 && (
+                    <div className="text-xs app-muted">Tick two results to compare them.</div>
+                  )}
                   {generationHistory.length === 0 ? (
                     <div className="text-sm text-gray-500">No iterations yet. Generate to build a history.</div>
                   ) : (
                     <div className="grid gap-3">
                       {generationHistory.map((entry) => (
-                        <div key={entry.id} className="app-card p-3 space-y-2">
+                        <div key={entry.id} className="app-card p-3 space-y-2" data-testid={`history-${entry.id}`}>
                           <div className="aspect-video bg-black/60 rounded-lg overflow-hidden">
                             <img src={entry.url} alt={entry.prompt} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input type="checkbox" checked={compareIds.includes(entry.id)} onChange={() => setCompareIds((current) => pickForCompare(current, entry.id))} aria-label="Compare this result" />
+                              Compare
+                            </label>
+                            <button
+                              type="button"
+                              className="app-button app-secondary text-xs"
+                              aria-pressed={Boolean(entry.pinned)}
+                              onClick={() => setGenerationHistory((current) => togglePin(current, entry.id))}
+                            >
+                              {entry.pinned ? 'Pinned' : 'Pin'}
+                            </button>
                           </div>
                           <div className="text-xs text-gray-300 line-clamp-2">{entry.prompt}</div>
                           <div className="flex flex-wrap items-center gap-2 text-xs text-indigo-300">
@@ -4930,7 +4989,7 @@ const ImageGenerationWorkspace: React.FC<ImageGenerationWorkspaceProps> = ({
                               className="app-button app-primary text-xs flex-1"
                               onClick={() => handleReuse(entry)}
                             >
-                              Reuse Prompt
+                              Fork settings
                             </button>
                             <button
                               className="app-button app-secondary text-xs"

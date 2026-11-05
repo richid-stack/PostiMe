@@ -38,6 +38,8 @@ import { fileToBase64, getBase64FromUrl } from '../utils/helpers';
 import { LibraryAsset, useLibraryAssets } from '../hooks/useLibraryAssets';
 import { estimateGenerationCost, formatUnitSummary, formatUsd } from '../utils/generationPricing';
 import { budgetForGeneration, type ProjectBudget } from '../utils/budget';
+import { pickForCompare } from '../utils/generationCompare';
+import GenerationCompare, { type CompareSide } from '../components/GenerationCompare';
 import { structurePromptForModel } from '../utils/modelPromptGuides';
 import { pickVideoModel } from '../utils/modelAutoSelect';
 import { getProductionFormat, type ProductionFormatId } from '../data/productionFormats';
@@ -1348,7 +1350,19 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
           throw new Error('Unsupported model selection.');
       }
 
-      const itemWithMeta = { ...item, generatedBy: modelOption?.label };
+      const itemWithMeta: MediaItem = {
+        ...item,
+        generatedBy: modelOption?.label,
+        prompt: prompt.trim(),
+        generationSettings: [
+          ['Model', modelOption?.label || modelId],
+          ['Length', `${normalizedDurationSeconds}s`],
+          ['Aspect ratio', aspectRatio],
+          ['Look', activeFormat?.label || ''],
+          ['Start frame', referenceFile || referenceUrl ? 'Yes' : 'No'],
+          ['End frame', endFrameFile || endFrameUrl ? 'Yes' : 'No'],
+        ],
+      };
       onAddGeneratedMedia(itemWithMeta);
       setGenerated((prev) => [itemWithMeta, ...prev].slice(0, 12));
       setStatus('Video generated and added to your project.');
@@ -1358,6 +1372,8 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
       setIsGenerating(false);
     }
   };
+
+  const [compareIds, setCompareIds] = useState<string[]>([]);
 
   const latestResults = useMemo(() => {
     const projectVideos = mediaItems.filter((item) => item.type === 'video');
@@ -1371,6 +1387,20 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
     }
     return unique.slice(0, 12);
   }, [generated, mediaItems]);
+
+  const compareSides = useMemo<[CompareSide, CompareSide] | null>(() => {
+    const pair = compareIds.map((id) => latestResults.find((item) => item.id === id));
+    if (pair.length !== 2 || !pair[0] || !pair[1]) return null;
+    const side = (item: MediaItem): CompareSide => ({
+      id: item.id,
+      url: item.url,
+      kind: 'video',
+      title: item.name,
+      prompt: item.prompt || '',
+      settings: item.generationSettings ?? [['Model', item.generatedBy || '']],
+    });
+    return [side(pair[0]), side(pair[1])];
+  }, [compareIds, latestResults]);
 
   const filteredLibraryAssets = useMemo(() => {
     const term = librarySearch.trim().toLowerCase();
@@ -2241,6 +2271,22 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
           <aside className="space-y-4">
             <section className="app-panel p-5 space-y-3">
               <div className="text-xs   text-gray-400">Latest results</div>
+              {compareSides && (
+                <GenerationCompare
+                  a={compareSides[0]}
+                  b={compareSides[1]}
+                  onClose={() => setCompareIds([])}
+                  onFork={(id) => {
+                    const item = latestResults.find((entry) => entry.id === id);
+                    if (!item?.prompt) return;
+                    setPrompt(item.prompt);
+                    setStatus('Loaded that result\u2019s prompt into the generator.');
+                  }}
+                />
+              )}
+              {latestResults.length > 1 && compareIds.length < 2 && (
+                <div className="text-xs app-muted">Tick two results to compare them.</div>
+              )}
               {latestResults.length === 0 ? (
                 <div className="text-sm text-gray-500">Generate a video to see previews here.</div>
               ) : (
@@ -2255,6 +2301,10 @@ const VideoGenerationWorkspace: React.FC<VideoGenerationWorkspaceProps> = ({
                           onDoubleClick={() => setAssetPreview({ url: item.url, kind: 'video', title: item.name })}
                         />
                       </div>
+                      <label className="flex items-center gap-1 text-xs cursor-pointer">
+                        <input type="checkbox" checked={compareIds.includes(item.id)} onChange={() => setCompareIds((current) => pickForCompare(current, item.id))} aria-label="Compare this result" />
+                        Compare
+                      </label>
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-xs text-gray-400 truncate">{item.name}</p>

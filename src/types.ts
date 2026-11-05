@@ -139,6 +139,8 @@ export type MediaItem = {
   analysisNotes?: string[];
   /** The person's own call on whether this was made with AI, overriding what the app can tell. */
   aiOrigin?: 'ai' | 'not-ai';
+  /** What was chosen when this was generated, as name and value pairs, so two results can be compared. */
+  generationSettings?: Array<[string, string]>;
 };
 
 export type DesignCanvasPreset = '16:9' | '9:16' | '1:1' | '4:5';
