@@ -1233,7 +1233,7 @@ const Timeline: React.FC<TimelineProps> = (props) => {
                           return { id: frame.id, leftPct: ratio * 100, color: KEYFRAME_MARKER_COLORS[frame.property] || '#9a9aa3' };
                         })
                         .filter(Boolean) as Array<{ id: string; leftPct: number; color: string }>;
-                      const kind = media.type === 'audio' ? 'audio' : media.type === 'image' ? 'image' : clip.textConfig ? 'title' : 'video';
+                      const kind = clip.adjustment ? 'adjustment' : media.type === 'audio' ? 'audio' : media.type === 'image' ? 'image' : clip.textConfig ? 'title' : 'video';
                       const showLabel = clipWidth > 56;
                       const speedLabel = clip.speed && Math.abs(clip.speed - 1) > 0.01 ? `${clip.speed.toFixed(2)}×` : null;
 

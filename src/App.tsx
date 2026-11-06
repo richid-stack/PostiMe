@@ -4190,6 +4190,44 @@ function App() {
         setTimelineClips([...timelineClips, newClip]);
     };
 
+    /** Puts an adjustment layer on the top video track, over the selected clip if there is one, otherwise from the playhead. */
+    const createAdjustmentLayer = () => {
+        const selected = selectedClipId ? timelineClips.find((clip) => clip.id === selectedClipId) : null;
+        const rangeStart = selected ? selected.start : Math.max(0, playheadPosition ?? 0);
+        const rangeEnd = selected ? selected.end : rangeStart + 5;
+        const duration = Math.max(MIN_TIMELINE_CLIP_DURATION, rangeEnd - rangeStart);
+
+        const videoTracks = timelineTracks.filter((track) => track.type === 'video');
+        const topTrack = videoTracks[videoTracks.length - 1];
+        const topClips = topTrack ? timelineClips.filter((clip) => clip.trackId === topTrack.id) : [];
+        const reusable = topTrack
+            && !topTrack.isLocked
+            && topClips.every((clip) => clip.adjustment)
+            && !topClips.some((clip) => clip.end > rangeStart + 0.001 && clip.start < rangeStart + duration - 0.001);
+        const track = reusable ? topTrack : createTimelineTrack('video', timelineTracks);
+        if (!reusable) setTimelineTracks((prev) => [...prev, track]);
+
+        const media = createTransparentTitleMedia('Adjustment layer', duration);
+        const layer = normalizeClipTiming({
+            id: `clip-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+            mediaId: media.id,
+            trackId: track.id,
+            start: rangeStart,
+            end: rangeStart + duration,
+            duration,
+            speed: 1,
+            sourceIn: 0,
+            sourceOut: duration,
+            effect: null,
+            adjustment: true,
+            transform: { scale: 1, opacity: 1, position: { x: 50, y: 50 } },
+        });
+        setMediaItems((prev) => [...prev, media]);
+        setActiveTrackId(track.id);
+        setSelectedClipId(layer.id);
+        setTimelineClips([...timelineClips, layer]);
+    };
+
     const formatSubtitleText = (value: string) => {
         const cleanValue = value
             .replace(/\s+/g, ' ')
@@ -7796,6 +7834,7 @@ function App() {
             onRecordVoiceover: handleRecordVoiceover,
             onOpenRestorePoints: () => setRestoreOpen(true),
             onOpenAnimatic: () => setAnimaticOpen(true),
+            onAddAdjustmentLayer: createAdjustmentLayer,
             brandKit,
             onChangeBrandKit: setBrandKit,
             onApplyBrand: handleApplyBrand,
@@ -9030,6 +9069,7 @@ function App() {
     });
     const paletteCommands: PaletteCommand[] = [
         { id: 'build-animatic', title: 'Build animatic from storyboard', hint: 'Put your shots on the timeline, timed by their voiceover', group: 'App', keywords: ['storyboard', 'shots', 'timing', 'previs', 'rough cut', 'temp'], run: () => setAnimaticOpen(true) },
+        { id: 'adjustment-layer', title: 'Add adjustment layer', hint: 'Grade or add effects to everything below, over a stretch of the timeline', group: 'App', keywords: ['grade', 'color', 'look', 'overlay', 'effect', 'all clips'], run: () => createAdjustmentLayer() },
         { id: 'restore-points', title: 'Restore points', hint: 'Go back to an earlier version of your edit', group: 'App', keywords: ['history', 'snapshot', 'version', 'backup', 'undo', 'revert'], run: () => setRestoreOpen(true) },
         ...workspaceNav.items.map((item): PaletteCommand => ({
             id: `go-${item.id}`,

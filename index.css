@@ -4052,6 +4052,7 @@ body[data-theme="light"] .tl-track__header {
 .tl-clip--audio { --tl-clip-color: #9a9aa3; --tl-clip-color-rgb: 154 154 163; }
 .tl-clip--image { --tl-clip-color: #b9b9c1; --tl-clip-color-rgb: 185 185 193; }
 .tl-clip--title { --tl-clip-color: #e6e6ea; --tl-clip-color-rgb: 230 230 234; }
+.tl-clip--adjustment { --tl-clip-color: #b58cff; --tl-clip-color-rgb: 181 140 255; background-image: repeating-linear-gradient(135deg, rgb(181 140 255 / 0.16) 0 6px, rgb(181 140 255 / 0.04) 6px 12px); }
 
 .tl-clip::before {
   content: "";

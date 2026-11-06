@@ -347,3 +347,67 @@ test('HQ export applies a clip EQ and compressor to the sound', { skip: !ffmpegP
     assert.ok(spread(stepsComp) < spread(stepsFlat) - 10, `the compressor narrows it (${spread(stepsComp).toFixed(1)} dB from ${spread(stepsFlat).toFixed(1)} dB)`);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('HQ export applies an adjustment layer to everything below it, only while the layer lasts', { skip: !ffmpegPath && 'no FFmpeg binary' }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'postime-adj-'));
+    run(['-f', 'lavfi', '-i', 'color=c=0xd02828:s=320x180:r=30:d=4,drawbox=x=160:y=0:w=160:h=180:color=0x2850d0:t=fill', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', '-crf', '10', path.join(dir, 'base.mp4')]);
+    run(['-f', 'lavfi', '-i', 'color=c=0x20c040:s=320x180:r=30:d=4', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', '-crf', '10', path.join(dir, 'over.mp4')]);
+
+    const { renderTimeline } = require('./ffmpeg-handler.js');
+    const render = (adjustment, filename, extra = []) => renderTimeline(dir, {
+        mediaItems: [
+            { id: 'base', type: 'video', path: 'base.mp4' },
+            { id: 'over', type: 'video', path: 'over.mp4' },
+            { id: 'adj', type: 'image', url: 'data:image/png;base64,AAAA', source: 'generated' },
+        ],
+        timelineTracks: [{ id: 'v1', type: 'video', isMuted: false }, { id: 'v2', type: 'video', isMuted: false }, { id: 'v3', type: 'video', isMuted: false }],
+        timelineClips: [
+            { id: 'c1', mediaId: 'base', trackId: 'v1', start: 0, end: 4, duration: 4, speed: 1, sourceIn: 0, sourceOut: 4, effect: null },
+            ...extra,
+            ...(adjustment ? [{ id: 'adj1', mediaId: 'adj', trackId: 'v3', start: 1, end: 3, duration: 2, speed: 1, sourceIn: 0, sourceOut: 2, effect: null, adjustment: true, ...adjustment }] : []),
+        ],
+    }, { width: 320, height: 180, fps: 30, bitrateKbps: 6000, videoCodec: 'h264', container: 'mp4', filename, gpuAcceleration: 'off' });
+    const spread = (pixel) => Math.max(...pixel) - Math.min(...pixel);
+
+    const plain = await render(null, 'adj-plain.mp4');
+    const grey = await render({ filters: { saturate: 0 } }, 'adj-grey.mp4');
+    for (const time of [0.5, 2, 3.5]) {
+        const [r, g, b] = pixelAt(plain, time, 40, 90, 320, 180);
+        assert.ok(r > 170 && g < 80 && b < 80, `without the layer the left side is red at ${time}s, got ${[r, g, b]}`);
+    }
+    assert.ok(spread(pixelAt(grey, 0.5, 40, 90, 320, 180)) > 90, 'before the layer the picture keeps its colour');
+    assert.ok(spread(pixelAt(grey, 3.5, 40, 90, 320, 180)) > 90, 'after the layer the picture keeps its colour');
+    assert.ok(spread(pixelAt(grey, 2, 40, 90, 320, 180)) < 25, `inside the layer the left side is grey, got ${pixelAt(grey, 2, 40, 90, 320, 180)}`);
+    assert.ok(spread(pixelAt(grey, 2, 280, 90, 320, 180)) < 25, 'inside the layer the right side is grey too');
+
+    // Half strength is halfway between the graded and the plain picture.
+    const half = await render({ filters: { saturate: 0 }, transform: { scale: 1, opacity: 0.5, position: { x: 50, y: 50 } } }, 'adj-half.mp4');
+    const full = spread(pixelAt(plain, 2, 40, 90, 320, 180));
+    const partial = spread(pixelAt(half, 2, 40, 90, 320, 180));
+    assert.ok(partial > 25 && partial < full - 25, `half strength leaves some colour (${partial} of ${full})`);
+
+    // It grades what is on the tracks below it, including a clip above the base picture, but not a clip on a higher track.
+    const mixed = await render({ filters: { saturate: 0 } }, 'adj-mixed.mp4', [
+        { id: 'c2', mediaId: 'over', trackId: 'v2', start: 0, end: 4, duration: 4, speed: 1, sourceIn: 0, sourceOut: 4, effect: null, transform: { scale: 0.5, opacity: 1, position: { x: 50, y: 50 } } },
+    ]);
+    assert.ok(spread(pixelAt(mixed, 2, 160, 90, 320, 180)) < 25, 'the clip on the middle track is graded as well');
+    assert.ok(spread(pixelAt(mixed, 0.5, 160, 90, 320, 180)) > 90, 'and keeps its colour outside the layer');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('HQ export treats zero as a real setting: black and white, and an effect turned all the way down', { skip: !ffmpegPath && 'no FFmpeg binary' }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'postime-zero-'));
+    run(['-f', 'lavfi', '-i', 'color=c=0xd02828:s=160x90:r=30:d=2', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', '-crf', '10', path.join(dir, 'red.mp4')]);
+    const { renderTimeline } = require('./ffmpeg-handler.js');
+    const render = (overrides, filename) => renderTimeline(dir, {
+        mediaItems: [{ id: 'm', type: 'video', path: 'red.mp4' }],
+        timelineTracks: [{ id: 'v1', type: 'video', isMuted: false }],
+        timelineClips: [{ id: 'c1', mediaId: 'm', trackId: 'v1', start: 0, end: 2, duration: 2, speed: 1, sourceIn: 0, sourceOut: 2, effect: null, ...overrides }],
+    }, { width: 160, height: 90, fps: 30, bitrateKbps: 4000, videoCodec: 'h264', container: 'mp4', filename, gpuAcceleration: 'off' });
+    const spread = (file) => { const p = pixelAt(file, 1, 80, 45, 160, 90); return Math.max(...p) - Math.min(...p); };
+    assert.ok(spread(await render({ filters: { saturate: 0 } }, 'z-bw.mp4')) < 25, 'saturation 0 gives black and white');
+    assert.ok(spread(await render({}, 'z-plain.mp4')) > 90, 'untouched stays red');
+    assert.ok(spread(await render({ effects: [{ id: 'e1', effect: 'Grayscale', intensity: 0, enabled: true }] }, 'z-fx0.mp4')) > 90, 'a Grayscale effect at 0 does nothing');
+    assert.ok(spread(await render({ effects: [{ id: 'e1', effect: 'Grayscale', intensity: 100, enabled: true }] }, 'z-fx100.mp4')) < 25, 'a Grayscale effect at 100 greys the picture');
+    fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -150,6 +150,8 @@ interface EditWorkspaceProps {
     onRecordVoiceover?: (file: File, startTime: number) => void | Promise<void>;
     onOpenRestorePoints?: () => void;
     onOpenAnimatic?: () => void;
+    /** Adds an adjustment layer over the selected clip, or from the playhead. */
+    onAddAdjustmentLayer?: () => void;
     brandKit?: BrandKit | null;
     onChangeBrandKit?: (kit: BrandKit | null) => void;
     onApplyBrand?: (scope: 'selected' | 'all') => void;
@@ -1466,6 +1468,11 @@ const EditWorkspace: React.FC<EditWorkspaceProps> = (props) => {
                 onClearMarks={() => { setPgmIn(null); setPgmOut(null); }}
                 trailing={(
                     <div className="edit-transport__actions">
+                        {props.onAddAdjustmentLayer && (
+                            <button onClick={props.onAddAdjustmentLayer} className="edit-text-btn edit-text-btn--outline" title="Add a layer that grades everything below it. It covers the selected clip, or 5 seconds from the playhead" aria-label="Add adjustment layer" data-testid="add-adjustment-layer">
+                                Adjustment
+                            </button>
+                        )}
                         {props.onOpenAnimatic && (
                             <button onClick={props.onOpenAnimatic} className="edit-text-btn edit-text-btn--outline" title="Build a timed rough cut from your storyboard shots" aria-label="Build animatic">
                                 Animatic

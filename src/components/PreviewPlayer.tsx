@@ -321,6 +321,7 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
     const requestRef = useRef<number | null>(null);
     const grainCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const lutCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const adjustCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const playheadRef = useRef(playheadPosition);
     const [frameRevision, setFrameRevision] = useState(0);
     const requestRedraw = useCallback(() => {
@@ -679,11 +680,118 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
         });
         visualTrackClips.forEach((list) => list.sort((a, b) => a.start - b.start));
 
+        const drawEffectOverlays = (entries: ActiveClipEffect[], drawW: number, drawH: number) => {
+            entries.forEach((entry) => {
+                if (!hasOverlayRenderer(entry.effect)) return;
+                switch (entry.effect) {
+                    case EffectType.FIRE_OVERLAY:
+                        drawFireOverlay(ctx, drawW, drawH, playhead, entry.resolvedIntensity);
+                        break;
+                    case EffectType.LIGHTNING_OVERLAY:
+                        drawLightningOverlay(ctx, drawW, drawH, playhead, entry.resolvedIntensity);
+                        break;
+                    case EffectType.EXPLOSION_OVERLAY:
+                        drawExplosionOverlay(ctx, drawW, drawH, playhead, entry.resolvedIntensity);
+                        break;
+                    case EffectType.GLITCH_OVERLAY:
+                        drawGlitchOverlay(ctx, drawW, drawH, playhead, entry.resolvedIntensity);
+                        break;
+                    case EffectType.COMIC:
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'overlay';
+                        ctx.globalAlpha = 0.12 * entry.resolvedIntensity;
+                        ctx.fillStyle = 'rgba(10, 10, 10, 0.8)';
+                        for (let y = -drawH / 2; y <= drawH / 2; y += 4) {
+                            ctx.fillRect(-drawW / 2, y, drawW, 1);
+                        }
+                        ctx.restore();
+                        break;
+                    default:
+                        break;
+                }
+            });
+        };
+
+        /** An adjustment layer: grades a copy of everything drawn so far (the tracks below it) and mixes it back at the layer's strength. */
+        const drawAdjustmentLayer = (clip: TimelineClip) => {
+            const w = canvas.width;
+            const h = canvas.height;
+            let snap = adjustCanvasRef.current;
+            if (!snap) {
+                snap = document.createElement('canvas');
+                adjustCanvasRef.current = snap;
+            }
+            if (snap.width !== w || snap.height !== h) {
+                snap.width = w;
+                snap.height = h;
+            }
+            const snapCtx = snap.getContext('2d');
+            if (!snapCtx) return;
+            snapCtx.clearRect(0, 0, w, h);
+            snapCtx.drawImage(canvas, 0, 0);
+
+            const filters = normalizeFilters(clip.filters);
+            const localTime = Math.max(0, playhead - clip.start);
+            const effects: ActiveClipEffect[] = getClipEffectLayers(clip)
+                .filter((entry) => entry.enabled !== false)
+                .map((entry) => {
+                    const base = Math.max(0, Math.min(100, entry.intensity ?? 100));
+                    const keyed = getKeyframeValue(clip.keyframes, 'effectIntensity', localTime, base, entry.id);
+                    return { ...entry, resolvedIntensity: Math.max(0, Math.min(100, keyed)) / 100 };
+                })
+                .filter((entry) => entry.resolvedIntensity > 0.001);
+            const filterString = appendStyleEffectFilters(buildFilterString(filters), effects).trim();
+            const rawStrength = clip.transform?.opacity;
+            const strength = Math.max(0, Math.min(1, typeof rawStrength === 'number' && Number.isFinite(rawStrength) ? rawStrength : 1));
+            const grain = getGrainStrength(filters);
+            const halation = getHalationStrength(filters);
+            const bloom = getBloomStrength(filters);
+            const vignette = getVignetteStrength(filters);
+
+            ctx.save();
+            ctx.globalAlpha = strength;
+            ctx.translate(w / 2, h / 2);
+            if (filters.lut === 'custom' && filters.customLut && filters.lutIntensity > 0) {
+                const scratch = getScratchCanvas(w, h);
+                const scratchCtx = scratch.getContext('2d');
+                if (scratchCtx) {
+                    scratchCtx.clearRect(0, 0, w, h);
+                    scratchCtx.filter = filterString || 'none';
+                    scratchCtx.drawImage(snap, 0, 0, w, h);
+                    try {
+                        const imageData = scratchCtx.getImageData(0, 0, w, h);
+                        applyCubeLutToImageData(imageData, filters.customLut, filters.lutIntensity / 100);
+                        scratchCtx.putImageData(imageData, 0, 0);
+                    } catch (error) {
+                        console.warn('Custom LUT skipped (tainted canvas)', error);
+                    }
+                    ctx.filter = 'none';
+                    ctx.drawImage(scratch, -w / 2, -h / 2, w, h);
+                }
+            } else {
+                ctx.filter = filterString || 'none';
+                ctx.drawImage(snap, -w / 2, -h / 2, w, h);
+            }
+            ctx.filter = 'none';
+            const halationLevel = Math.min(1, Math.max(0, halation / 100));
+            const bloomLevel = Math.min(1, Math.max(0, bloom / 100));
+            drawGlowOverlay(ctx, snap, w, h, filterString, halation, { blur: 8 + halationLevel * 18, opacity: Math.min(0.45, halationLevel * 0.4), tint: true });
+            drawGlowOverlay(ctx, snap, w, h, filterString, bloom, { blur: 6 + bloomLevel * 20, opacity: Math.min(0.45, bloomLevel * 0.5), tint: false });
+            if (grain > 0) drawGrain(ctx, w, h, grain);
+            if (vignette > 0) drawVignette(ctx, w, h, vignette);
+            drawEffectOverlays(effects, w, h);
+            ctx.restore();
+        };
+
         activeClips.forEach(clip => {
             const media = mediaMapRef.current.get(clip.mediaId);
             const element = mediaElementsRef.current.get(clip.mediaId);
 
             if (!media || !element) return;
+            if (clip.adjustment) {
+                drawAdjustmentLayer(clip);
+                return;
+            }
 
             const speed = Math.max(0.05, clip.speed || 1);
             const sourceIn = clip.sourceIn ?? 0;
@@ -959,37 +1067,7 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
                 drawVignette(ctx, drawW, drawH, vignetteStrength);
             }
 
-            if (drawW && drawH) {
-                activeEffects.forEach((entry) => {
-                    if (!hasOverlayRenderer(entry.effect)) return;
-                    switch (entry.effect) {
-                        case EffectType.FIRE_OVERLAY:
-                            drawFireOverlay(ctx, drawW, drawH, playhead, entry.resolvedIntensity);
-                            break;
-                        case EffectType.LIGHTNING_OVERLAY:
-                            drawLightningOverlay(ctx, drawW, drawH, playhead, entry.resolvedIntensity);
-                            break;
-                        case EffectType.EXPLOSION_OVERLAY:
-                            drawExplosionOverlay(ctx, drawW, drawH, playhead, entry.resolvedIntensity);
-                            break;
-                        case EffectType.GLITCH_OVERLAY:
-                            drawGlitchOverlay(ctx, drawW, drawH, playhead, entry.resolvedIntensity);
-                            break;
-                        case EffectType.COMIC:
-                            ctx.save();
-                            ctx.globalCompositeOperation = 'overlay';
-                            ctx.globalAlpha = 0.12 * entry.resolvedIntensity;
-                            ctx.fillStyle = 'rgba(10, 10, 10, 0.8)';
-                            for (let y = -drawH / 2; y <= drawH / 2; y += 4) {
-                                ctx.fillRect(-drawW / 2, y, drawW, 1);
-                            }
-                            ctx.restore();
-                            break;
-                        default:
-                            break;
-                    }
-                });
-            }
+            if (drawW && drawH) drawEffectOverlays(activeEffects, drawW, drawH);
 
             // Text Overlay
             if (clip.textConfig) {

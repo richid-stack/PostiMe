@@ -356,6 +356,8 @@ export type TimelineClip = {
   volume?: number;
   /** Low cut, tone and compressor for this clip's sound. Missing means untouched. */
   audioFx?: import('./utils/audioFx').AudioFx;
+  /** An adjustment layer: no picture of its own. Its colour, look and effects apply to everything on the tracks below it while it lasts. The layer's strength is transform.opacity. */
+  adjustment?: boolean;
   blendMode?: 'normal' | 'screen' | 'overlay' | 'multiply' | 'darken' | 'lighten' | 'color-dodge' | 'soft-light' | 'difference';
   effect: EffectType | null;
   effects?: ClipEffectLayer[];

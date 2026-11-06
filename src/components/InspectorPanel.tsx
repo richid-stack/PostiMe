@@ -472,6 +472,27 @@ const InspectorPanel: React.FC<InspectorPanelProps> = (props) => {
 
         switch (activeTab) {
             case 'PROPERTIES': {
+                if (selectedClip.adjustment) {
+                    const strength = Math.round((selectedClip.transform?.opacity ?? 1) * 100);
+                    const setStrength = (percent: number) => onUpdateClip({
+                        ...selectedClip,
+                        transform: { ...(selectedClip.transform || DEFAULT_TRANSFORM), opacity: percent / 100 },
+                    });
+                    return (
+                        <div className="insp-body" data-testid="adjustment-properties">
+                            <div className="pk-card">
+                                <dl className="insp-facts">
+                                    <div><dt>Type</dt><dd>Adjustment layer</dd></div>
+                                    <div><dt>Covers</dt><dd className="pk-mono">{selectedClip.start.toFixed(2)}s to {selectedClip.end.toFixed(2)}s</dd></div>
+                                </dl>
+                            </div>
+                            <div className="pk-card">
+                                <SliderRow id="adjustment-strength" label="Strength" value={strength} display={`${strength}%`} min={0} max={100} onChange={setStrength} onReset={() => setStrength(100)} />
+                            </div>
+                            <p className="pk-hint">Use the Color and Effects tabs to set the look. It applies to everything on the tracks below this one, only while the layer lasts. Drag its ends on the timeline to change where it starts and stops.</p>
+                        </div>
+                    );
+                }
                 const displayDuration = (selectedMedia.type === 'video' ? (selectedMedia.duration || 5) : selectedClip.duration) / selectedClip.speed;
                 return (
                     <div className="insp-body">
@@ -795,7 +816,12 @@ const InspectorPanel: React.FC<InspectorPanelProps> = (props) => {
     const tabs: { id: InspectorTab; icon: React.FC<{ className?: string }>; name: string }[] = [
         { id: 'PROPERTIES', icon: PropertiesIcon, name: 'Clip' },
     ];
-    if (selectedMedia?.type === 'video' || selectedMedia?.type === 'image') {
+    if (selectedClip?.adjustment) {
+        tabs.push(
+            { id: 'EFFECTS', icon: EffectsIcon, name: 'Effects' },
+            { id: 'COLOR', icon: ColorIcon, name: 'Color' },
+        );
+    } else if (selectedMedia?.type === 'video' || selectedMedia?.type === 'image') {
         tabs.push(
             { id: 'TRANSFORM', icon: TransformIcon, name: 'Transform' },
             { id: 'MOTION', icon: MotionIcon, name: 'Motion' },

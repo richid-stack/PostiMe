@@ -52,18 +52,24 @@ const FILM_LUT_DELTA = {
     'bleach-bypass': { brightness: -6, contrast: 24, saturate: -55, hueRotate: 0 },
 };
 
+/** A number, or the fallback when it is missing or not a number. Zero is a real value (a saturation of 0 is black and white). */
+const numberOr = (value, fallback) => {
+    const parsed = Number(value);
+    return value === null || value === undefined || value === '' || !Number.isFinite(parsed) ? fallback : parsed;
+};
+
 const normalizeClipFilters = (filters) => {
     const normalized = { ...DEFAULT_CLIP_FILTERS, ...(filters || {}) };
-    normalized.brightness = clamp(Number(normalized.brightness) || 100, 0, 200);
-    normalized.contrast = clamp(Number(normalized.contrast) || 100, 0, 200);
-    normalized.saturate = clamp(Number(normalized.saturate) || 100, 0, 200);
+    normalized.brightness = clamp(numberOr(normalized.brightness, 100), 0, 200);
+    normalized.contrast = clamp(numberOr(normalized.contrast, 100), 0, 200);
+    normalized.saturate = clamp(numberOr(normalized.saturate, 100), 0, 200);
     normalized.hueRotate = Number(normalized.hueRotate) || 0;
     normalized.grain = clamp(Number(normalized.grain) || 0, 0, 100);
     normalized.halation = clamp(Number(normalized.halation) || 0, 0, 100);
     normalized.bloom = clamp(Number(normalized.bloom) || 0, 0, 100);
     normalized.vignette = clamp(Number(normalized.vignette) || 0, 0, 100);
     normalized.lut = typeof normalized.lut === 'string' ? normalized.lut : 'none';
-    normalized.lutIntensity = clamp(Number(normalized.lutIntensity) || 100, 0, 100);
+    normalized.lutIntensity = clamp(numberOr(normalized.lutIntensity, 100), 0, 100);
     return normalized;
 };
 
@@ -91,7 +97,7 @@ const getClipEffectLayers = (clip) => {
         .map((entry, index) => ({
             id: typeof entry.id === 'string' && entry.id ? entry.id : `fx-${index + 1}`,
             effect: entry.effect,
-            intensity: clamp(Number(entry.intensity ?? 100) || 100, 0, 100),
+            intensity: clamp(numberOr(entry.intensity, 100), 0, 100),
             enabled: entry.enabled !== false,
         }))
         .filter((entry) => typeof entry.effect === 'string' && entry.effect.length > 0);
@@ -912,6 +918,26 @@ const buildRenderPlan = ({ folderPath, project }) => {
     let hasActiveAudio = false;
 
     for (const clip of timelineClips) {
+        // An adjustment layer has no picture of its own: it grades everything on the tracks below it while it lasts.
+        if (clip.adjustment === true) {
+            const track = trackMap.get(clip.trackId);
+            if (!isTrackActiveForMedia(track, 'image')) continue;
+            const adjStart = Number(clip.start);
+            const adjEnd = Number(clip.end);
+            if (!Number.isFinite(adjStart) || !Number.isFinite(adjEnd) || adjEnd <= adjStart) {
+                issues.push(`Adjustment layer ${clip.id}: invalid timeline range.`);
+                continue;
+            }
+            visualEntries.push({
+                kind: 'adjustment',
+                clip,
+                trackIndex: trackIndexMap.get(clip.trackId) ?? 0,
+                start: adjStart,
+                end: adjEnd,
+            });
+            continue;
+        }
+
         const mediaItem = mediaById.get(clip.mediaId);
         if (!mediaItem) {
             issues.push(`Missing media for clip ${clip.id}.`);
@@ -1057,6 +1083,44 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
         return outLabel;
     };
 
+    /** Colour grade, LUT and effect layers of a clip, applied to `label`. Shared by clips and adjustment layers. */
+    const applyLookSteps = ({ label, counter, clip, entry, clipTag, speed }) => {
+        let currentLabel = label;
+        let stepCounter = counter;
+        const baseFilters = buildClipBaseFilters(clip.filters);
+        baseFilters.forEach((filterBody) => {
+            currentLabel = addSimpleStep(currentLabel, filterBody, clipTag, stepCounter);
+            stepCounter += 1;
+        });
+
+        if (entry.lutFile) {
+            const lutFilter = buildLutFilter(entry.lutFile, Boolean(clip.filters.customLut.is3d));
+            const lutStrength = clamp(Number(clip.filters.lutIntensity) || 0, 0, 100) / 100;
+            currentLabel = lutStrength >= 0.999
+                ? addSimpleStep(currentLabel, lutFilter, clipTag, stepCounter)
+                : addBlendEffectStep(currentLabel, lutFilter, formatNumber(lutStrength, 4), clipTag, 'lut');
+            stepCounter += 1;
+        }
+
+        const effectLayers = getClipEffectLayers(clip)
+            .filter((layer) => layer.enabled !== false && layer.intensity > 0.001);
+
+        effectLayers.forEach((layer, effectIndex) => {
+            const effectFilter = getEffectFilterChain(layer.effect);
+            if (!effectFilter) return;
+            const effectKeyframes = (clip.keyframes || [])
+                .filter((frame) => frame?.property === 'effectIntensity' && frame?.targetEffectId === layer.id);
+            const intensityExpr = buildIntensityExpression({
+                baseIntensity: layer.intensity,
+                keyframes: effectKeyframes,
+                speed,
+            });
+            currentLabel = addBlendEffectStep(currentLabel, effectFilter, intensityExpr, clipTag, effectIndex);
+        });
+
+        return { label: currentLabel, counter: stepCounter };
+    };
+
     const audioSources = [];
 
     renderPlan.visualEntries.forEach((entry, clipIndex) => {
@@ -1092,6 +1156,23 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
                 );
             }
             canvasLabel = overlayNext;
+            return;
+        }
+
+        // An adjustment layer: the grade is applied to a copy of everything composited so far, then mixed back in
+        // at the layer's strength, only between its start and end.
+        if (entry.kind === 'adjustment') {
+            const adjTag = `adj${clipIndex}`;
+            const adjNext = `canvas${clipIndex + 1}`;
+            const adjClip = entry.clip;
+            complexFilter.push(`[${canvasLabel}]split[${adjTag}_base][${adjTag}_fxin]`);
+            const look = applyLookSteps({ label: `${adjTag}_fxin`, counter: 0, clip: adjClip, entry, clipTag: adjTag, speed: 1 });
+            const rawStrength = Number(adjClip.transform?.opacity);
+            const strength = clamp(Number.isFinite(rawStrength) ? rawStrength : 1, 0, 1);
+            complexFilter.push(
+                `[${adjTag}_base][${look.label}]blend=all_expr='A*(1-${formatNumber(strength, 4)})+B*${formatNumber(strength, 4)}':enable='between(t,${formatNumber(entry.start, 5)},${formatNumber(entry.end, 5)})'[${adjNext}]`,
+            );
+            canvasLabel = adjNext;
             return;
         }
 
@@ -1209,36 +1290,7 @@ const buildTimelineCommand = ({ renderPlan, width, height, fps, outputPath, enco
             stepCounter += 1;
         }
 
-        const baseFilters = buildClipBaseFilters(clip.filters);
-        baseFilters.forEach((filterBody) => {
-            currentLabel = addSimpleStep(currentLabel, filterBody, clipTag, stepCounter);
-            stepCounter += 1;
-        });
-
-        if (entry.lutFile) {
-            const lutFilter = buildLutFilter(entry.lutFile, Boolean(clip.filters.customLut.is3d));
-            const lutStrength = clamp(Number(clip.filters.lutIntensity) || 0, 0, 100) / 100;
-            currentLabel = lutStrength >= 0.999
-                ? addSimpleStep(currentLabel, lutFilter, clipTag, stepCounter)
-                : addBlendEffectStep(currentLabel, lutFilter, formatNumber(lutStrength, 4), clipTag, 'lut');
-            stepCounter += 1;
-        }
-
-        const effectLayers = getClipEffectLayers(clip)
-            .filter((layer) => layer.enabled !== false && layer.intensity > 0.001);
-
-        effectLayers.forEach((layer, effectIndex) => {
-            const effectFilter = getEffectFilterChain(layer.effect);
-            if (!effectFilter) return;
-            const effectKeyframes = (clip.keyframes || [])
-                .filter((frame) => frame?.property === 'effectIntensity' && frame?.targetEffectId === layer.id);
-            const intensityExpr = buildIntensityExpression({
-                baseIntensity: layer.intensity,
-                keyframes: effectKeyframes,
-                speed,
-            });
-            currentLabel = addBlendEffectStep(currentLabel, effectFilter, intensityExpr, clipTag, effectIndex);
-        });
+        ({ label: currentLabel, counter: stepCounter } = applyLookSteps({ label: currentLabel, counter: stepCounter, clip, entry, clipTag, speed }));
 
         currentLabel = addSimpleStep(currentLabel, `setpts=PTS-STARTPTS+${formatNumber(start, 5)}/TB`, clipTag, stepCounter);
         stepCounter += 1;
