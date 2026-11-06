@@ -354,6 +354,8 @@ export type TimelineClip = {
   sourceIn?: number;
   sourceOut?: number;
   volume?: number;
+  /** Low cut, tone and compressor for this clip's sound. Missing means untouched. */
+  audioFx?: import('./utils/audioFx').AudioFx;
   blendMode?: 'normal' | 'screen' | 'overlay' | 'multiply' | 'darken' | 'lighten' | 'color-dodge' | 'soft-light' | 'difference';
   effect: EffectType | null;
   effects?: ClipEffectLayer[];

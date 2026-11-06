@@ -897,6 +897,7 @@ const buildTimingEntry = (clip) => {
         playbackDuration: sourceRange / speed,
         volume: clip.volume !== undefined ? Number(clip.volume) : 1,
         volumeKeyframes: (clip.keyframes || []).filter((frame) => frame?.property === 'volume'),
+        audioFx: clip.audioFx || null,
     };
 };
 
@@ -1000,6 +1001,7 @@ const buildRenderPlan = ({ folderPath, project }) => {
             playbackDuration,
             volume: clip.volume !== undefined ? Number(clip.volume) : 1,
             volumeKeyframes: (clip.keyframes || []).filter((frame) => frame?.property === 'volume'),
+            audioFx: clip.audioFx || null,
             hasAudio: false,
         });
     }

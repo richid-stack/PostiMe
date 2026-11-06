@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ClipEffectLayer, ClipFilters, LutId, TimelineClip, MediaItem, EffectType, TransitionType, KenBurnsConfig, Keyframe } from '../types';
 import { FunctionDeclaration } from '@google/genai';
 import AIAssistant from './AIAssistant';
+import AudioFxPanel from './AudioFxPanel';
 import { TRANSITIONS } from '../constants';
-import { PropertiesIcon, EffectsIcon, ColorIcon, TransitionsIcon, MagicWandIcon, TextIcon, TransformIcon, KeyingIcon, MotionIcon, KeyframeIcon, XIcon, AddIcon } from './icons';
+import { PropertiesIcon, EffectsIcon, ColorIcon, TransitionsIcon, MagicWandIcon, TextIcon, TransformIcon, KeyingIcon, MotionIcon, KeyframeIcon, XIcon, AddIcon, AudioIcon } from './icons';
 import { FILM_LUTS, LOOK_PRESETS, normalizeFilters } from '../utils/colorGrading';
 import { parseCubeLut } from '../utils/lut';
 import { getClipEffectLayers, normalizeEffectLayer, syncClipEffectsLegacyField } from '../utils/effects';
@@ -29,7 +30,7 @@ interface InspectorPanelProps {
     playheadPosition: number;
 }
 
-type InspectorTab = 'PROPERTIES' | 'EFFECTS' | 'COLOR' | 'TRANSITIONS' | 'TEXT' | 'AI' | 'TRANSFORM' | 'MOTION' | 'KEYFRAMES';
+type InspectorTab = 'PROPERTIES' | 'EFFECTS' | 'COLOR' | 'TRANSITIONS' | 'TEXT' | 'AI' | 'TRANSFORM' | 'MOTION' | 'KEYFRAMES' | 'AUDIO';
 
 const DEFAULT_TRANSFORM = {
     scale: 1,
@@ -784,6 +785,8 @@ const InspectorPanel: React.FC<InspectorPanelProps> = (props) => {
                     </div>
                 );
             }
+            case 'AUDIO':
+                return <AudioFxPanel clip={selectedClip} media={selectedMedia} onUpdateClip={onUpdateClip} />;
             case 'AI':
                 return <AIAssistant apiKeyReady={props.apiKeyReady} tools={props.aiTools} toolExecutor={props.aiToolExecutor} context={assistantContext} />;
         }
@@ -802,6 +805,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = (props) => {
             { id: 'TRANSITIONS', icon: TransitionsIcon, name: 'Transition' },
         );
     }
+    if (!selectedClip?.textConfig && (selectedMedia?.type === 'video' || selectedMedia?.type === 'audio')) tabs.push({ id: 'AUDIO', icon: AudioIcon, name: 'Audio' });
     if (selectedClip?.textConfig) tabs.push({ id: 'TEXT', icon: TextIcon, name: 'Text' });
     tabs.push({ id: 'AI', icon: MagicWandIcon, name: 'Assistant' });
     const activeMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];

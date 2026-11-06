@@ -314,3 +314,36 @@ test('HQ export plays a speed ramp: the piece lengths add up and each moment sho
     }
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('HQ export applies a clip EQ and compressor to the sound', { skip: !ffmpegPath && 'no FFmpeg binary' }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'postime-fx-'));
+    // Three steady tones, and a second file whose tone is at -20 dBFS for 2 s then 20 dB quieter (-40 dBFS) for 2 s; the compressor threshold sits below both.
+    run(['-f', 'lavfi', '-i', 'color=c=black:s=160x90:r=30:d=4', '-f', 'lavfi', '-i', 'sine=frequency=100:sample_rate=48000:duration=4', '-f', 'lavfi', '-i', 'sine=frequency=1200:sample_rate=48000:duration=4', '-f', 'lavfi', '-i', 'sine=frequency=8000:sample_rate=48000:duration=4', '-filter_complex', '[1:a][2:a][3:a]amix=inputs=3:normalize=0[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k', path.join(dir, 'tones.mp4')]);
+    run(['-f', 'lavfi', '-i', 'color=c=black:s=160x90:r=30:d=4', '-f', 'lavfi', '-i', "sine=frequency=1000:sample_rate=48000:duration=4,volume='if(lt(t,2),0.8,0.08)':eval=frame", '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k', path.join(dir, 'steps.mp4')]);
+
+    const { renderTimeline } = require('./ffmpeg-handler.js');
+    const render = (media, audioFx, filename) => renderTimeline(dir, {
+        mediaItems: [{ id: 'src', type: 'video', path: media }],
+        timelineTracks: [{ id: 'v1', type: 'video', isMuted: false }],
+        timelineClips: [{ id: 'c1', mediaId: 'src', trackId: 'v1', start: 0, end: 4, duration: 4, speed: 1, sourceIn: 0, sourceOut: 4, effect: null, volume: 1, ...(audioFx ? { audioFx } : {}) }],
+    }, { width: 160, height: 90, fps: 30, bitrateKbps: 1000, videoCodec: 'h264', container: 'mp4', filename, gpuAcceleration: 'off' });
+
+    const flat = await render('tones.mp4', null, 'flat.mp4');
+    const tone = await render('tones.mp4', { lowCutHz: 300, midDb: -12, highDb: 9 }, 'tone.mp4');
+    const at = (file, hz) => bandLevel(file, 0.5, 3, hz);
+    const change = (hz) => at(tone, hz) - at(flat, hz);
+    assert.ok(change(100) < -15, `the low cut takes the 100 Hz tone down (${change(100).toFixed(1)} dB)`);
+    assert.ok(change(1200) < -8, `the mid cut takes the 1.2 kHz tone down (${change(1200).toFixed(1)} dB)`);
+    assert.ok(change(8000) > 5, `the high boost lifts the 8 kHz tone (${change(8000).toFixed(1)} dB)`);
+
+    // An effect with every setting at zero must leave the sound alone.
+    const neutral = await render('tones.mp4', { lowCutHz: 0, lowDb: 0, midDb: 0, highDb: 0, compressor: { enabled: false } }, 'neutral.mp4');
+    for (const hz of [100, 1200, 8000]) assert.ok(Math.abs(at(neutral, hz) - at(flat, hz)) < 0.5, `neutral EQ leaves ${hz} Hz alone`);
+
+    const stepsFlat = await render('steps.mp4', null, 'steps-flat.mp4');
+    const stepsComp = await render('steps.mp4', { compressor: { enabled: true, thresholdDb: -44, ratio: 8, attackMs: 5, releaseMs: 50, makeupDb: 0 } }, 'steps-comp.mp4');
+    const spread = (file) => bandLevel(file, 0.3, 1.4, 1000) - bandLevel(file, 2.4, 1.4, 1000);
+    assert.ok(spread(stepsFlat) > 17, `the source has a wide gap between loud and quiet (${spread(stepsFlat).toFixed(1)} dB)`);
+    assert.ok(spread(stepsComp) < spread(stepsFlat) - 10, `the compressor narrows it (${spread(stepsComp).toFixed(1)} dB from ${spread(stepsFlat).toFixed(1)} dB)`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

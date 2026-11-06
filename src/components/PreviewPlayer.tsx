@@ -6,6 +6,7 @@ import { applyCubeLutToImageData } from '../utils/lut';
 import { keyFrame } from '../utils/chromaKeyGL';
 import { drawTitleLocal, layoutTitle, resolveTitleColors } from '../utils/titleLayout';
 import { activeCaptionWord, captionWordTimings } from '../utils/captionWords';
+import { AUDIO_FX_BANDS, isAudioFxActive, normalizeAudioFx, type AudioFx } from '../utils/audioFx';
 import { buildStyleFilterForEffect, getClipEffectLayers, hasOverlayRenderer, mergeFilterChunk } from '../utils/effects';
 
 export interface PreviewPlayerHandle {
@@ -341,13 +342,100 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
         }
     }, [isPlaying]);
 
-    // Audio routing for export. A media element can feed the Web Audio graph only once, so the graph is built on
-    // first capture and kept: every element goes to a recording destination and, through a monitor gain, to the speakers.
+    // Audio routing. A media element can feed the Web Audio graph only once, so it gets one chain that is kept:
+    // source -> low cut -> three tone bands -> compressor -> out. A clip with no effects leaves every stage neutral.
+    // Elements are only routed through Web Audio when a clip has effects or when an export captures the sound,
+    // so plain playback stays on the browser's own path.
+    type FxChain = {
+        highpass: BiquadFilterNode;
+        low: BiquadFilterNode;
+        mid: BiquadFilterNode;
+        high: BiquadFilterNode;
+        compressor: DynamicsCompressorNode;
+        makeup: GainNode;
+        out: GainNode;
+    };
+    const fxChainsRef = useRef<Map<HTMLMediaElement, FxChain>>(new Map());
     const audioCaptureRef = useRef<{
         destination: MediaStreamAudioDestinationNode;
         monitor: GainNode;
-        connected: Set<HTMLMediaElement>;
     } | null>(null);
+
+    const routeChainOutput = useCallback((chain: FxChain) => {
+        const context = audioContextRef.current;
+        if (!context) return;
+        chain.out.disconnect();
+        const capture = audioCaptureRef.current;
+        if (capture) {
+            chain.out.connect(capture.destination);
+            chain.out.connect(capture.monitor);
+        } else {
+            chain.out.connect(context.destination);
+        }
+    }, []);
+
+    const ensureFxChain = useCallback((element: HTMLMediaElement): FxChain | null => {
+        const existing = fxChainsRef.current.get(element);
+        if (existing) return existing;
+        const context = audioContextRef.current;
+        if (!context) return null;
+        try {
+            const source = context.createMediaElementSource(element);
+            const highpass = context.createBiquadFilter();
+            highpass.type = 'highpass';
+            highpass.frequency.value = 10;
+            highpass.Q.value = 0.707;
+            const low = context.createBiquadFilter();
+            low.type = 'lowshelf';
+            low.frequency.value = AUDIO_FX_BANDS.lowShelfHz;
+            const mid = context.createBiquadFilter();
+            mid.type = 'peaking';
+            mid.frequency.value = AUDIO_FX_BANDS.midHz;
+            mid.Q.value = AUDIO_FX_BANDS.midQ;
+            const high = context.createBiquadFilter();
+            high.type = 'highshelf';
+            high.frequency.value = AUDIO_FX_BANDS.highShelfHz;
+            const compressor = context.createDynamicsCompressor();
+            compressor.knee.value = 3;
+            compressor.ratio.value = 1;
+            compressor.threshold.value = 0;
+            const makeup = context.createGain();
+            const out = context.createGain();
+            source.connect(highpass).connect(low).connect(mid).connect(high).connect(compressor).connect(makeup).connect(out);
+            const chain = { highpass, low, mid, high, compressor, makeup, out };
+            fxChainsRef.current.set(element, chain);
+            routeChainOutput(chain);
+            return chain;
+        } catch (error) {
+            console.warn('Could not route a clip through the audio effects', error);
+            return null;
+        }
+    }, [routeChainOutput]);
+
+    /** Sets a clip's effects on its element's chain, building the chain only when there is something to apply. */
+    const applyAudioFx = useCallback((element: HTMLMediaElement, input: AudioFx | undefined, boost = 1) => {
+        // A browser media element tops out at full volume, so a clip volume above 1 is applied as gain in the chain.
+        const active = isAudioFxActive(input);
+        if (!active && boost <= 1.001 && !fxChainsRef.current.has(element)) return;
+        const chain = ensureFxChain(element);
+        if (!chain) return;
+        const context = audioContextRef.current;
+        if (!context) return;
+        const fx = active ? normalizeAudioFx(input) : normalizeAudioFx(undefined);
+        const now = context.currentTime;
+        const set = (param: AudioParam, value: number) => param.setTargetAtTime(value, now, 0.015);
+        set(chain.highpass.frequency, fx.lowCutHz > 0 ? fx.lowCutHz : 10);
+        set(chain.low.gain, fx.lowDb);
+        set(chain.mid.gain, fx.midDb);
+        set(chain.high.gain, fx.highDb);
+        const c = fx.compressor;
+        const compressing = active && c.enabled;
+        set(chain.compressor.threshold, compressing ? c.thresholdDb : 0);
+        set(chain.compressor.ratio, compressing ? c.ratio : 1);
+        set(chain.compressor.attack, c.attackMs / 1000);
+        set(chain.compressor.release, c.releaseMs / 1000);
+        set(chain.makeup.gain, (compressing ? Math.pow(10, c.makeupDb / 20) : 1) * Math.max(1, boost));
+    }, [ensureFxChain]);
 
     const startAudioCapture = useCallback(async (): Promise<MediaStream | null> => {
         const context = audioContextRef.current;
@@ -357,15 +445,14 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
             if (!audioCaptureRef.current) {
                 const monitor = context.createGain();
                 monitor.connect(context.destination);
-                audioCaptureRef.current = { destination: context.createMediaStreamDestination(), monitor, connected: new Set() };
+                audioCaptureRef.current = { destination: context.createMediaStreamDestination(), monitor };
+                // Chains built earlier played to the speakers directly; send them through the recorder now.
+                fxChainsRef.current.forEach((chain) => routeChainOutput(chain));
             }
             const capture = audioCaptureRef.current;
             mediaElementsRef.current.forEach((element) => {
-                if (!(element instanceof HTMLMediaElement) || capture.connected.has(element)) return;
-                const source = context.createMediaElementSource(element);
-                source.connect(capture.destination);
-                source.connect(capture.monitor);
-                capture.connected.add(element);
+                if (!(element instanceof HTMLMediaElement)) return;
+                ensureFxChain(element);
             });
             capture.monitor.gain.value = 0;
             return capture.destination.stream;
@@ -373,7 +460,7 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
             console.warn('Could not capture audio for export', error);
             return null;
         }
-    }, []);
+    }, [ensureFxChain, routeChainOutput]);
 
     const stopAudioCapture = useCallback(() => {
         if (audioCaptureRef.current) audioCaptureRef.current.monitor.gain.value = 1;
@@ -618,6 +705,7 @@ const PreviewPlayer = forwardRef<PreviewPlayerHandle, PreviewPlayerProps>(({
             if (media.type === 'audio' || media.type === 'video') {
                 const mediaEl = element as HTMLMediaElement;
                 mediaEl.volume = Math.max(0, Math.min(1, volume));
+                applyAudioFx(mediaEl, clip.audioFx, volume);
 
                 // Sync Check
                 const drift = Math.abs(mediaEl.currentTime - clipTime);

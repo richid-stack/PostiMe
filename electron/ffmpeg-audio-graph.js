@@ -8,6 +8,8 @@
  * position, then all clips are summed, limited and padded to the length of the picture.
  */
 
+const { buildAudioFxFilters } = require('./audio-fx-filters');
+
 const SAMPLE_RATE = 48000;
 
 const formatNumber = (value, precision = 6) => Number(value || 0).toFixed(precision).replace(/\.?0+$/, '');
@@ -31,7 +33,7 @@ const buildAtempoChain = (speed) => {
 
 /**
  * Filter chain for one clip.
- * @param {object} entry { start, visibleDuration, sourceIn, sourceOut, speed, playbackDuration, volume, volumeKeyframes }
+ * @param {object} entry { start, visibleDuration, sourceIn, sourceOut, speed, playbackDuration, volume, volumeKeyframes, audioFx }
  * @param {(args: object) => string} buildAnimatedValueExpression the handler's keyframe expression builder
  */
 const buildClipAudioChain = (entry, buildAnimatedValueExpression) => {
@@ -47,6 +49,9 @@ const buildClipAudioChain = (entry, buildAnimatedValueExpression) => {
         steps.push(`atrim=duration=${formatNumber(entry.visibleDuration, 5)}`);
         steps.push('asetpts=PTS-STARTPTS');
     }
+
+    // Tone and dynamics come before the volume, so the clip level is set after the compressor has done its work.
+    steps.push(...buildAudioFxFilters(entry.audioFx));
 
     const keyframes = Array.isArray(entry.volumeKeyframes) ? entry.volumeKeyframes : [];
     const baseVolume = clamp(Number.isFinite(Number(entry.volume)) ? Number(entry.volume) : 1, 0, 4);
